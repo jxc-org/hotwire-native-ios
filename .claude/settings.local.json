@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:native.hotwired.dev)",
+      "Bash(swift build:*)",
+      "Bash(xcodebuild:*)"
+    ]
+  }
+}
