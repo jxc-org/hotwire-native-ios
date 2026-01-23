@@ -65,8 +65,7 @@ public struct WebError: LocalizedError, Equatable {
             // (e.g., ATS, background-session, caching errors)
             return urlError.localizedDescription
         } else {
-            // Turbo.js status codes (0, -1) without URLError
-            return "A network error occurred."
+            return description
         }
     }
 
