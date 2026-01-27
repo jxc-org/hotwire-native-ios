@@ -3,7 +3,8 @@
     "allow": [
       "WebFetch(domain:native.hotwired.dev)",
       "Bash(swift build:*)",
-      "Bash(xcodebuild:*)"
+      "Bash(xcodebuild:*)",
+      "WebSearch"
     ]
   }
 }
