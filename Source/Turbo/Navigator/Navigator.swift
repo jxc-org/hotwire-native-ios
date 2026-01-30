@@ -264,6 +264,10 @@ extension Navigator: WKUIControllerDelegate {
     public func present(_ alert: UIAlertController, animated: Bool) {
         hierarchyController.activeNavigationController.present(alert, animated: animated)
     }
+    
+    public func newWindowRequested(for url: URL) {
+        session.visitDidProposeVisitToLocation(url)
+    }
 }
 
 // MARK: - Session and web view reloading
