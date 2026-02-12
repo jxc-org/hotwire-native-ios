@@ -85,11 +85,6 @@ public struct WebError: LocalizedError, Equatable {
 
     // MARK: - Factory Methods
 
-    /// Creates a WebError from a URLError.
-    public static func from(_ urlError: URLError) -> WebError {
-        WebError(urlError: urlError)
-    }
-
     /// Creates a WebError from any Error (attempts to extract URLError if possible).
     public static func from(_ error: Error) -> WebError {
         if let urlError = error as? URLError {
