@@ -67,42 +67,42 @@ final class WebErrorTests: XCTestCase {
         XCTAssertFalse(WebError(urlError: URLError(.timedOut)).isConnectionError)
     }
 
-    // MARK: - isSslError
+    // MARK: - isSSLError
 
-    func test_isSslError_true_forSecureConnectionFailed() {
-        XCTAssertTrue(WebError(urlError: URLError(.secureConnectionFailed)).isSslError)
+    func test_isSSLError_true_forSecureConnectionFailed() {
+        XCTAssertTrue(WebError(urlError: URLError(.secureConnectionFailed)).isSSLError)
     }
 
-    func test_isSslError_true_forServerCertificateHasBadDate() {
-        XCTAssertTrue(WebError(urlError: URLError(.serverCertificateHasBadDate)).isSslError)
+    func test_isSSLError_true_forServerCertificateHasBadDate() {
+        XCTAssertTrue(WebError(urlError: URLError(.serverCertificateHasBadDate)).isSSLError)
     }
 
-    func test_isSslError_true_forServerCertificateUntrusted() {
-        XCTAssertTrue(WebError(urlError: URLError(.serverCertificateUntrusted)).isSslError)
+    func test_isSSLError_true_forServerCertificateUntrusted() {
+        XCTAssertTrue(WebError(urlError: URLError(.serverCertificateUntrusted)).isSSLError)
     }
 
-    func test_isSslError_true_forServerCertificateHasUnknownRoot() {
-        XCTAssertTrue(WebError(urlError: URLError(.serverCertificateHasUnknownRoot)).isSslError)
+    func test_isSSLError_true_forServerCertificateHasUnknownRoot() {
+        XCTAssertTrue(WebError(urlError: URLError(.serverCertificateHasUnknownRoot)).isSSLError)
     }
 
-    func test_isSslError_true_forServerCertificateNotYetValid() {
-        XCTAssertTrue(WebError(urlError: URLError(.serverCertificateNotYetValid)).isSslError)
+    func test_isSSLError_true_forServerCertificateNotYetValid() {
+        XCTAssertTrue(WebError(urlError: URLError(.serverCertificateNotYetValid)).isSSLError)
     }
 
-    func test_isSslError_true_forClientCertificateRejected() {
-        XCTAssertTrue(WebError(urlError: URLError(.clientCertificateRejected)).isSslError)
+    func test_isSSLError_true_forClientCertificateRejected() {
+        XCTAssertTrue(WebError(urlError: URLError(.clientCertificateRejected)).isSSLError)
     }
 
-    func test_isSslError_true_forClientCertificateRequired() {
-        XCTAssertTrue(WebError(urlError: URLError(.clientCertificateRequired)).isSslError)
+    func test_isSSLError_true_forClientCertificateRequired() {
+        XCTAssertTrue(WebError(urlError: URLError(.clientCertificateRequired)).isSSLError)
     }
 
-    func test_isSslError_false_forTimedOut() {
-        XCTAssertFalse(WebError(urlError: URLError(.timedOut)).isSslError)
+    func test_isSSLError_false_forTimedOut() {
+        XCTAssertFalse(WebError(urlError: URLError(.timedOut)).isSSLError)
     }
 
-    func test_isSslError_false_whenNoURLError() {
-        XCTAssertFalse(WebError(errorCode: 0, description: nil).isSslError)
+    func test_isSSLError_false_whenNoURLError() {
+        XCTAssertFalse(WebError(errorCode: 0, description: nil).isSSLError)
     }
 
     // MARK: - Cross-Classification
@@ -112,7 +112,7 @@ final class WebErrorTests: XCTestCase {
         XCTAssertTrue(error.isOffline)
         XCTAssertFalse(error.isTimeout)
         XCTAssertFalse(error.isConnectionError)
-        XCTAssertFalse(error.isSslError)
+        XCTAssertFalse(error.isSSLError)
     }
 
     func test_connectionError_isNotOffline() {
@@ -120,12 +120,12 @@ final class WebErrorTests: XCTestCase {
         XCTAssertTrue(error.isConnectionError)
         XCTAssertFalse(error.isOffline)
         XCTAssertFalse(error.isTimeout)
-        XCTAssertFalse(error.isSslError)
+        XCTAssertFalse(error.isSSLError)
     }
 
     func test_sslError_isNotConnectionError() {
         let error = WebError(urlError: URLError(.secureConnectionFailed))
-        XCTAssertTrue(error.isSslError)
+        XCTAssertTrue(error.isSSLError)
         XCTAssertFalse(error.isOffline)
         XCTAssertFalse(error.isTimeout)
         XCTAssertFalse(error.isConnectionError)

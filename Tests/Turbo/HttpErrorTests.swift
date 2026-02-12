@@ -1,36 +1,36 @@
 import XCTest
 @testable import HotwireNative
 
-final class HttpErrorTests: XCTestCase {
+final class HTTPErrorTests: XCTestCase {
 
     // MARK: - from(statusCode:) Range Boundaries
 
     func test_from_statusCode1_isUnknownError() {
-        XCTAssertEqual(HttpError.from(statusCode: 1), .unknownError(statusCode: 1))
+        XCTAssertEqual(HTTPError.from(statusCode: 1), .unknownError(statusCode: 1))
     }
 
     func test_from_statusCode399_isUnknownError() {
-        XCTAssertEqual(HttpError.from(statusCode: 399), .unknownError(statusCode: 399))
+        XCTAssertEqual(HTTPError.from(statusCode: 399), .unknownError(statusCode: 399))
     }
 
     func test_from_statusCode400_isClientError() {
-        XCTAssertEqual(HttpError.from(statusCode: 400), .client(.badRequest))
+        XCTAssertEqual(HTTPError.from(statusCode: 400), .client(.badRequest))
     }
 
     func test_from_statusCode499_isClientError() {
-        XCTAssertEqual(HttpError.from(statusCode: 499), .client(.other(statusCode: 499)))
+        XCTAssertEqual(HTTPError.from(statusCode: 499), .client(.other(statusCode: 499)))
     }
 
     func test_from_statusCode500_isServerError() {
-        XCTAssertEqual(HttpError.from(statusCode: 500), .server(.internalServerError))
+        XCTAssertEqual(HTTPError.from(statusCode: 500), .server(.internalServerError))
     }
 
     func test_from_statusCode599_isServerError() {
-        XCTAssertEqual(HttpError.from(statusCode: 599), .server(.other(statusCode: 599)))
+        XCTAssertEqual(HTTPError.from(statusCode: 599), .server(.other(statusCode: 599)))
     }
 
     func test_from_statusCode600_isUnknownError() {
-        XCTAssertEqual(HttpError.from(statusCode: 600), .unknownError(statusCode: 600))
+        XCTAssertEqual(HTTPError.from(statusCode: 600), .unknownError(statusCode: 600))
     }
 
     // MARK: - ClientError Round-Trips
@@ -132,81 +132,81 @@ final class HttpErrorTests: XCTestCase {
     // MARK: - unknownError statusCode
 
     func test_unknownError_statusCode_roundTrips() {
-        XCTAssertEqual(HttpError.unknownError(statusCode: 600).statusCode, 600)
+        XCTAssertEqual(HTTPError.unknownError(statusCode: 600).statusCode, 600)
     }
 
     func test_unknownError_statusCode_roundTrips_forLowCode() {
-        XCTAssertEqual(HttpError.unknownError(statusCode: 1).statusCode, 1)
+        XCTAssertEqual(HTTPError.unknownError(statusCode: 1).statusCode, 1)
     }
 
-    // MARK: - HttpError statusCode Delegation
+    // MARK: - HTTPError statusCode Delegation
 
     func test_statusCode_delegatesToClientError() {
-        XCTAssertEqual(HttpError.client(.notFound).statusCode, 404)
+        XCTAssertEqual(HTTPError.client(.notFound).statusCode, 404)
     }
 
     func test_statusCode_delegatesToServerError() {
-        XCTAssertEqual(HttpError.server(.badGateway).statusCode, 502)
+        XCTAssertEqual(HTTPError.server(.badGateway).statusCode, 502)
     }
 
     // MARK: - ClientError Descriptions
 
     func test_clientError_unauthorized_description() {
-        XCTAssertEqual(HttpError.ClientError.unauthorized.errorDescription, "Unauthorized")
+        XCTAssertEqual(HTTPError.ClientError.unauthorized.errorDescription, "Unauthorized")
     }
 
     func test_clientError_notFound_description() {
-        XCTAssertEqual(HttpError.ClientError.notFound.errorDescription, "Not Found")
+        XCTAssertEqual(HTTPError.ClientError.notFound.errorDescription, "Not Found")
     }
 
     func test_clientError_tooManyRequests_description() {
-        XCTAssertEqual(HttpError.ClientError.tooManyRequests.errorDescription, "Too Many Requests")
+        XCTAssertEqual(HTTPError.ClientError.tooManyRequests.errorDescription, "Too Many Requests")
     }
 
     func test_clientError_other_description_includesStatusCode() {
-        XCTAssertEqual(HttpError.ClientError.other(statusCode: 418).errorDescription, "Client Error (418)")
+        XCTAssertEqual(HTTPError.ClientError.other(statusCode: 418).errorDescription, "Client Error (418)")
     }
 
     // MARK: - ServerError Descriptions
 
     func test_serverError_internalServerError_description() {
-        XCTAssertEqual(HttpError.ServerError.internalServerError.errorDescription, "Internal Server Error")
+        XCTAssertEqual(HTTPError.ServerError.internalServerError.errorDescription, "Internal Server Error")
     }
 
     func test_serverError_serviceUnavailable_description() {
-        XCTAssertEqual(HttpError.ServerError.serviceUnavailable.errorDescription, "Service Unavailable")
+        XCTAssertEqual(HTTPError.ServerError.serviceUnavailable.errorDescription, "Service Unavailable")
     }
 
     func test_serverError_other_description_includesStatusCode() {
-        XCTAssertEqual(HttpError.ServerError.other(statusCode: 599).errorDescription, "Server Error (599)")
+        XCTAssertEqual(HTTPError.ServerError.other(statusCode: 599).errorDescription, "Server Error (599)")
     }
 
     // MARK: - unknownError Description
 
     func test_unknownError_description_includesStatusCode() {
-        XCTAssertEqual(HttpError.unknownError(statusCode: 600).errorDescription, "HTTP Error (600)")
+        XCTAssertEqual(HTTPError.unknownError(statusCode: 600).errorDescription, "HTTP Error (600)")
     }
 
     // MARK: - Helpers
 
     private func assertClientErrorRoundTrip(
-        _ expected: HttpError.ClientError,
+        _ expected: HTTPError.ClientError,
         statusCode: Int,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let created = HttpError.ClientError.from(statusCode: statusCode)
+        let created = HTTPError.ClientError.from(statusCode: statusCode)
         XCTAssertEqual(created, expected, file: file, line: line)
         XCTAssertEqual(created.statusCode, statusCode, "statusCode round-trip failed", file: file, line: line)
     }
 
     private func assertServerErrorRoundTrip(
-        _ expected: HttpError.ServerError,
+        _ expected: HTTPError.ServerError,
         statusCode: Int,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let created = HttpError.ServerError.from(statusCode: statusCode)
+        let created = HTTPError.ServerError.from(statusCode: statusCode)
         XCTAssertEqual(created, expected, file: file, line: line)
         XCTAssertEqual(created.statusCode, statusCode, "statusCode round-trip failed", file: file, line: line)
     }
