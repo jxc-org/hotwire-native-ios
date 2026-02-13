@@ -112,7 +112,6 @@ class TestVisitDelegate {
 }
 
 extension TestVisitDelegate: VisitDelegate {
-    
     func visitDidProposeVisitToLocation(_ location: URL) {
         record()
     }
@@ -151,14 +150,14 @@ extension TestVisitDelegate: VisitDelegate {
         record()
     }
 
-    func visit(_ visit: Visit, requestDidFailWithError error: HotwireNativeError) {
-        record()
-    }
-    
     func visitRequestDidStart(_ visit: Visit) {
         record()
     }
-    
+
+    func visit(_ visit: Visit, requestDidFailWithError error: HotwireNativeError) {
+        record()
+    }
+
     func visitRequestDidFinish(_ visit: Visit) {
         record()
     }
