@@ -37,7 +37,8 @@ struct RedirectHandler {
 
     func resolve(location: URL) async throws -> Result {
         do {
-            let request = URLRequest(url: location)
+            var request = URLRequest(url: location)
+            request.timeoutInterval = 30
             let (_, response) = try await URLSession.shared.data(for: request)
             let httpResponse = try validateResponse(response)
 
