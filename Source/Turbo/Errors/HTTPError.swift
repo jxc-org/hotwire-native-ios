@@ -49,7 +49,7 @@ public enum HTTPError: LocalizedError, Equatable, Sendable {
 
 extension HTTPError {
     /// Errors representing HTTP client errors in the 400-499 range.
-    public enum ClientError: LocalizedError, Equatable {
+    public enum ClientError: LocalizedError, Equatable, Sendable {
         case badRequest
         case unauthorized
         case paymentRequired
@@ -139,7 +139,7 @@ extension HTTPError {
 
 extension HTTPError {
     /// Errors representing HTTP server errors in the 500-599 range.
-    public enum ServerError: LocalizedError, Equatable {
+    public enum ServerError: LocalizedError, Equatable, Sendable {
         case internalServerError
         case notImplemented
         case badGateway
