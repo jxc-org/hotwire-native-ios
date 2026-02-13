@@ -128,7 +128,10 @@ extension WebViewBridge: ScriptMessageHandlerDelegate {
         case .visitProposed:
             delegate?.webView(self, didProposeVisitToLocation: message.location!, options: message.options!)
         case .visitRequestFailedWithNonHttpStatusCode:
-            delegate?.webView(self, didFailRequestWithNonHttpStatusToLocation: message.location!, identifier: message.identifier!, statusCode: message.statusCode!)
+            guard let location = message.location,
+                  let identifier = message.identifier,
+                  let statusCode = message.statusCode else { return }
+            delegate?.webView(self, didFailRequestWithNonHttpStatusToLocation: location, identifier: identifier, statusCode: statusCode)
         case .visitProposalScrollingToAnchor:
             break
         case .visitProposalRefreshingPage:
