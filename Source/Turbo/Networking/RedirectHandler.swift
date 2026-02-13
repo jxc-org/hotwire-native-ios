@@ -1,14 +1,27 @@
 import Foundation
 
-enum RedirectHandlerError: Error {
+enum RedirectHandlerError: LocalizedError {
     case requestFailed(Error)
     case responseValidationFailed(reason: ResponseValidationFailureReason)
 
     /// The underlying reason the `.responseValidationFailed` error occurred.
-    public enum ResponseValidationFailureReason: Sendable {
+    enum ResponseValidationFailureReason: Sendable {
         case missingURL
         case invalidResponse
-        case unacceptableStatusCode(code: Int)
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .requestFailed(let error):
+            return "Redirect resolution failed: \(error.localizedDescription)"
+        case .responseValidationFailed(let reason):
+            switch reason {
+            case .missingURL:
+                return "Redirect resolution failed: missing URL"
+            case .invalidResponse:
+                return "Redirect resolution response invalid"
+            }
+        }
     }
 }
 
@@ -21,7 +34,8 @@ struct RedirectHandler {
 
     func resolve(location: URL) async throws -> Result {
         do {
-            let request = URLRequest(url: location)
+            var request = URLRequest(url: location)
+            request.timeoutInterval = 30
             let (_, response) = try await URLSession.shared.data(for: request)
             let httpResponse = try validateResponse(response)
 
@@ -53,16 +67,6 @@ struct RedirectHandler {
             throw RedirectHandlerError.responseValidationFailed(reason: .invalidResponse)
         }
 
-        guard httpResponse.isSuccessful else {
-            throw RedirectHandlerError.responseValidationFailed(reason: .unacceptableStatusCode(code: httpResponse.statusCode))
-        }
-
         return httpResponse
-    }
-}
-
-extension HTTPURLResponse {
-    public var isSuccessful: Bool {
-        (200...299).contains(statusCode)
     }
 }

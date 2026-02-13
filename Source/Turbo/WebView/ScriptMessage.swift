@@ -30,6 +30,10 @@ struct ScriptMessage {
         guard let options = data["options"] as? [String: Any] else { return nil }
         return VisitOptions(json: options)
     }
+    
+    var statusCode: Int? {
+        data["statusCode"] as? Int
+    }
 }
 
 extension ScriptMessage {
@@ -50,6 +54,7 @@ extension ScriptMessage {
     enum Name: String {
         case pageLoaded
         case pageLoadFailed
+        case turboIsReady
         case errorRaised
         case visitProposed
         case visitProposalScrollingToAnchor
