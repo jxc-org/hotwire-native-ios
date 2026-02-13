@@ -8,9 +8,8 @@ enum RedirectHandlerError: LocalizedError {
     enum ResponseValidationFailureReason: Sendable {
         case missingURL
         case invalidResponse
-        case unacceptableStatusCode(code: Int)
     }
-    
+
     var errorDescription: String? {
         switch self {
         case .requestFailed(let error):
@@ -21,8 +20,6 @@ enum RedirectHandlerError: LocalizedError {
                 return "Redirect resolution failed: missing URL"
             case .invalidResponse:
                 return "Redirect resolution response invalid"
-            case .unacceptableStatusCode(let code):
-                return "Redirect resolution failed \(code)"
             }
         }
     }
@@ -70,16 +67,6 @@ struct RedirectHandler {
             throw RedirectHandlerError.responseValidationFailed(reason: .invalidResponse)
         }
 
-        guard httpResponse.isSuccessful else {
-            throw RedirectHandlerError.responseValidationFailed(reason: .unacceptableStatusCode(code: httpResponse.statusCode))
-        }
-
         return httpResponse
-    }
-}
-
-extension HTTPURLResponse {
-    public var isSuccessful: Bool {
-        (200...299).contains(statusCode)
     }
 }

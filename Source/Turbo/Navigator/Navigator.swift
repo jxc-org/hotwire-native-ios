@@ -286,7 +286,9 @@ extension Navigator {
         // Instead, save the session in `backgroundTerminatedWebViewSessions`
         // and reload it when the app is back in foreground.
         if appLifecycleObserver.appState == .background {
-            backgroundTerminatedWebViewSessions.append(session)
+            if !backgroundTerminatedWebViewSessions.contains(where: { $0 === session }) {
+                backgroundTerminatedWebViewSessions.append(session)
+            }
             return
         }
 

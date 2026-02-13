@@ -399,7 +399,7 @@ extension Session: WebViewDelegate {
             let result = try await RedirectHandler().resolve(location: location)
             switch result {
             case .noRedirect:
-                // The server is reachable (RedirectHandler confirmed a 2xx response
+                // The server is reachable (RedirectHandler confirmed an HTTP response
                 // with no redirect). The Turbo.js fetch failure was transient —
                 // retry with a cold boot visit before showing an error.
                 log("resolveRedirect: no redirect, retrying",
@@ -430,24 +430,17 @@ extension Session: WebViewDelegate {
                 )
             }
         } catch let error as RedirectHandlerError {
-            // Convert redirect-specific errors to appropriate types
             let visitError: HotwireNativeError
             switch error {
-            case .responseValidationFailed(reason: .unacceptableStatusCode(let code)):
-                if let httpError = HTTPError.from(statusCode: code) {
-                    visitError = .http(httpError)
-                } else {
-                    visitError = .load(.invalidResponse)
-                }
             case .responseValidationFailed(reason: .missingURL),
                  .responseValidationFailed(reason: .invalidResponse):
                 visitError = .load(.invalidResponse)
             case .requestFailed(let underlyingError):
                 visitError = .web(WebError.from(underlyingError))
             }
-            await failCurrentVisit(with: visitError, visitIdentifier: identifier)
+            await retryOrFailCurrentVisit(with: visitError, visitIdentifier: identifier)
         } catch {
-            await failCurrentVisit(
+            await retryOrFailCurrentVisit(
                 with: .web(WebError.from(error)),
                 visitIdentifier: identifier
             )
