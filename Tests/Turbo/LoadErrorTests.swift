@@ -6,11 +6,11 @@ final class LoadErrorTests: XCTestCase {
     // MARK: - errorDescription
 
     func test_errorDescription_notPresent() {
-        XCTAssertEqual(LoadError.notPresent.errorDescription, "The page could not be loaded due to a configuration error.")
+        XCTAssertEqual(LoadError.notPresent.errorDescription, "The page could not be loaded because Turbo is not present.")
     }
 
     func test_errorDescription_notReady() {
-        XCTAssertEqual(LoadError.notReady.errorDescription, "The page could not be loaded due to a configuration error.")
+        XCTAssertEqual(LoadError.notReady.errorDescription, "The page could not be loaded because Turbo is not ready.")
     }
 
     func test_errorDescription_contentTypeMismatch() {

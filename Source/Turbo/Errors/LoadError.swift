@@ -26,9 +26,9 @@ public enum LoadError: LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .notPresent:
-            return "The page could not be loaded due to a configuration error."
+            return "The page could not be loaded because Turbo is not present."
         case .notReady:
-            return "The page could not be loaded due to a configuration error."
+            return "The page could not be loaded because Turbo is not ready."
         case .contentTypeMismatch:
             return "The server returned an invalid content type."
         case .invalidResponse:
