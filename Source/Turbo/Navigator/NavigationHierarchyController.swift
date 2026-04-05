@@ -138,6 +138,8 @@ class NavigationHierarchyController {
             navigationController.replaceLastViewController(with: controller)
         } else if visitingPreviousPage(on: navigationController, with: controller, via: proposal) {
             navigationController.popViewController(animated: proposal.animated)
+        } else if proposal.isRedirect && !didReplaceModalContext {
+            navigationController.replaceLastViewController(with: controller)
         } else if proposal.options.action == .advance || didReplaceModalContext {
             navigationController.pushViewController(controller, animated: proposal.animated)
         } else {
