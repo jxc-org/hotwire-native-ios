@@ -33,7 +33,7 @@ class NavigationHierarchyController {
         self.modalNavigationController = modalNavigationController
     }
 
-    func route(controller: UIViewController, proposal: VisitProposal) {
+    func route(controller: UIViewController, proposal: VisitProposal, dismissedModal: Bool = false) {
         if let alert = controller as? UIAlertController {
             presentAlert(alert, via: proposal)
         } else {
@@ -45,7 +45,7 @@ class NavigationHierarchyController {
 
             switch proposal.presentation {
             case .default:
-                navigate(with: controller, via: proposal)
+                navigate(with: controller, via: proposal, dismissedModal: dismissedModal)
             case .pop:
                 pop(animated: proposal.animated)
             case .replace:
@@ -102,13 +102,15 @@ class NavigationHierarchyController {
         && !modalNavigationController.isBeingDismissed
     }
 
-    private func navigate(with controller: UIViewController, via proposal: VisitProposal) {
+    private func navigate(with controller: UIViewController, via proposal: VisitProposal, dismissedModal: Bool = false) {
         switch proposal.context {
         case .default:
             if let visitable = controller as? Visitable {
                 delegate.visit(visitable, on: .main, with: proposal.options)
             }
-            let willReplaceModalContext = isInModalContext
+            // Use the pre-pop modal state if provided (pop() sets isBeingDismissed
+            // before route() runs, making isInModalContext false too early).
+            let willReplaceModalContext = dismissedModal || isInModalContext
             navigationController.dismiss(animated: proposal.animated)
             pushOrReplace(on: navigationController,
                           with: controller,

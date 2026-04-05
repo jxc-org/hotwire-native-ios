@@ -73,12 +73,16 @@ public class Navigator {
     ///
     /// - Parameter proposal: the proposal to visit
     public func route(_ proposal: VisitProposal) {
+        route(proposal, dismissedModal: false)
+    }
+
+    func route(_ proposal: VisitProposal, dismissedModal: Bool) {
         if routeDecision(for: proposal.url) == .cancel {
             return
         }
 
         guard let controller = controller(for: proposal) else { return }
-        hierarchyController.route(controller: controller, proposal: proposal)
+        hierarchyController.route(controller: controller, proposal: proposal, dismissedModal: dismissedModal)
     }
 
     /// Pops the top controller on the presented navigation stack.
@@ -172,11 +176,13 @@ public class Navigator {
 
 extension Navigator: SessionDelegate {
     public func session(_ session: Session, didProposeVisit proposal: VisitProposal) {
+        var dismissedModal = false
         if proposal.isRedirect && session === modalSession {
+            dismissedModal = true
             let animatePop = proposal.context == .default
             pop(animated: animatePop)
         }
-        route(proposal)
+        route(proposal, dismissedModal: dismissedModal)
     }
 
     public func session(_ session: Session, didProposeVisitToCrossOriginRedirect location: URL) {
