@@ -143,7 +143,10 @@ class NavigationHierarchyController {
         } else if proposal.isRedirect && !didReplaceModalContext {
             navigationController.replaceLastViewController(with: controller)
         } else if proposal.options.action == .advance || didReplaceModalContext {
-            navigationController.pushViewController(controller, animated: proposal.animated)
+            // Don't animate the push when replacing modal context — the modal
+            // dismiss animation already provides the visual transition.
+            let animate = proposal.animated && !didReplaceModalContext
+            navigationController.pushViewController(controller, animated: animate)
         } else {
             navigationController.replaceLastViewController(with: controller)
         }
