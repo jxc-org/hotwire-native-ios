@@ -33,6 +33,20 @@ public class Session: NSObject {
     private func setup() {
         webView.translatesAutoresizingMaskIntoConstraints = false
         bridge.delegate = self
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCacheInvalidation),
+            name: CacheInvalidationComponent.invalidationNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleCacheInvalidation(_ notification: Notification) {
+        guard let urls = notification.userInfo?["urls"] as? [String] else { return }
+        for path in urls {
+            markPathAsStale(path)
+        }
     }
 
     // MARK: Visiting
