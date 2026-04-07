@@ -17,6 +17,7 @@ public class Session: NSObject {
 
     private var isShowingStaleContent = false
     private var isSnapshotCacheStale = false
+    private var staleURLPaths = Set<String>()
 
     /// Automatically creates a web view with the passed-in configuration
     public convenience init(webViewConfiguration: WKWebViewConfiguration? = nil) {
@@ -101,6 +102,17 @@ public class Session: NSObject {
     /// Reload the `Session` the next time the visitable view appears.
     public func markContentAsStale() {
         isShowingStaleContent = true
+    }
+
+    /// Mark a specific URL path as stale. When navigating back to a visitable
+    /// with this path, a full visit will be performed instead of restoring
+    /// from the snapshot cache.
+    public func markPathAsStale(_ path: String) {
+        staleURLPaths.insert(path)
+    }
+
+    private func consumeStalePath(_ path: String) -> Bool {
+        staleURLPaths.remove(path) != nil
     }
 
     // MARK: Visitable activation
@@ -273,7 +285,12 @@ extension Session: VisitableDelegate {
 
         // Navigating backward from a web view screen to a web view screen.
         if visitable !== topmostVisit.visitable {
-            visit(visitable, action: .restore)
+            if consumeStalePath(visitable.initialVisitableURL.path) {
+                initialized = false
+                visit(visitable, options: VisitOptions(action: .restore, response: nil))
+            } else {
+                visit(visitable, action: .restore)
+            }
             return
         }
         
