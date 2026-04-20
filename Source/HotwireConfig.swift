@@ -58,6 +58,22 @@ public struct HotwireConfig {
     /// Configure options for matching path rules.
     public var pathConfiguration = PathConfiguration()
 
+    /// HTTP headers sent with remote `path_configuration` downloads.
+    ///
+    /// Use this to identify the client version/build/name so the server can
+    /// return a version-aware configuration (e.g. gating native screens to
+    /// a minimum app version, or forcing upgrade prompts for old clients).
+    ///
+    /// Example:
+    /// ```
+    /// Hotwire.config.pathConfigurationHTTPHeaders = [
+    ///     "X-App-Name": "Birthdaze",
+    ///     "X-App-Version": "2.1.0",
+    ///     "X-App-Build": "42"
+    /// ]
+    /// ```
+    public var pathConfigurationHTTPHeaders: [String: String] = [:]
+
     /// The view controller used in `Navigator` for web requests. Must be
     /// a `VisitableViewController` or subclass.
     public var defaultViewController: (URL) -> VisitableViewController = { url in

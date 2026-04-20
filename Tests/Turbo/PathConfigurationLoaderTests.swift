@@ -58,6 +58,34 @@ class PathConfigurationLoaderTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: loader.configurationCacheURL(for: serverURL).path))
     }
 
+    func test_server_sendsConfiguredHTTPHeaders() throws {
+        let originalHeaders = Hotwire.config.pathConfigurationHTTPHeaders
+        defer { Hotwire.config.pathConfigurationHTTPHeaders = originalHeaders }
+
+        Hotwire.config.pathConfigurationHTTPHeaders = [
+            "X-App-Name": "TestApp",
+            "X-App-Version": "1.2.3"
+        ]
+
+        let loader = PathConfigurationLoader(sources: [.server(serverURL)])
+        clearCache(loader.configurationCacheURL(for: serverURL))
+
+        var seenRequest: URLRequest?
+        let expectation = expectation(description: "Wait for stubbed request.")
+        stub(condition: { _ in true }) { request in
+            seenRequest = request
+            let json = ["rules": [["patterns": ["/new"], "properties": ["presentation": "test"]] as [String: Any]]]
+            return HTTPStubsResponse(jsonObject: json, statusCode: 200, headers: [:])
+        }
+
+        loader.load { _ in expectation.fulfill() }
+        wait(for: [expectation])
+
+        let request = try XCTUnwrap(seenRequest)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-App-Name"), "TestApp")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-App-Version"), "1.2.3")
+    }
+
     private func stubRequest(for loader: PathConfigurationLoader) -> XCTestExpectation {
         stub(condition: { _ in true }) { _ in
             let json = ["rules": [["patterns": ["/new"], "properties": ["presentation": "test"]] as [String: Any]]]

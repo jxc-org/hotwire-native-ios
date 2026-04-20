@@ -39,8 +39,13 @@ final class PathConfigurationLoader {
         }
         
         let session = options?.urlSessionConfiguration.map { URLSession(configuration: $0) } ?? URLSession.shared
-        
-        session.dataTask(with: url) { [weak self] data, response, error in
+
+        var request = URLRequest(url: url)
+        for (field, value) in Hotwire.config.pathConfigurationHTTPHeaders {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
+
+        session.dataTask(with: request) { [weak self] data, response, error in
             guard let data = data,
                   let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200
