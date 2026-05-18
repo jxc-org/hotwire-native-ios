@@ -16,6 +16,19 @@ public struct HotwireConfig {
     /// beginning of the user agent.
     public var applicationUserAgentPrefix: String? = nil
 
+    /// A single-token identifier for the app (e.g. `"Birthdaze"`).
+    ///
+    /// When set, the library adds an `"Identifier/version (build N)"` token
+    /// to the user agent — sent on both WebView requests *and* the remote
+    /// `path_configuration` request — so the server can identify the app and
+    /// its version from any request (e.g. gating native screens to a minimum
+    /// app version, or forcing upgrade prompts for old clients).
+    ///
+    /// The version and build are read automatically from the app bundle
+    /// (`CFBundleShortVersionString` / `CFBundleVersion`). The identifier
+    /// must be a single token (no spaces) so the server can parse it.
+    public var appIdentifier: String? = nil
+
     /// When enabled, adds a `UIBarButtonItem` of type `.done` to the left
     /// navigation bar button item on screens presented modally.
     public var showDoneButtonOnModals = false
@@ -41,12 +54,17 @@ public struct HotwireConfig {
     /// and its registered bridge components.
     ///
     /// The user agent includes:
+    /// - An `"Identifier/version (build N)"` token, when `appIdentifier` is set
     /// - Your (optional) custom `applicationUserAgentPrefix`
-    /// - "Native iOS; Turbo Native iOS;"
+    /// - "Hotwire Native iOS; Turbo Native iOS;"
     /// - "bridge-components: [your bridge components];"
     public var userAgent: String {
         get {
+            let info = Bundle.main.infoDictionary
             return UserAgent.build(
+                appIdentifier: appIdentifier,
+                appVersion: info?["CFBundleShortVersionString"] as? String,
+                appBuild: info?["CFBundleVersion"] as? String,
                 applicationPrefix: applicationUserAgentPrefix,
                 componentTypes: Hotwire.bridgeComponentTypes
             )
@@ -58,21 +76,6 @@ public struct HotwireConfig {
     /// Configure options for matching path rules.
     public var pathConfiguration = PathConfiguration()
 
-    /// HTTP headers sent with remote `path_configuration` downloads.
-    ///
-    /// Use this to identify the client version/build/name so the server can
-    /// return a version-aware configuration (e.g. gating native screens to
-    /// a minimum app version, or forcing upgrade prompts for old clients).
-    ///
-    /// Example:
-    /// ```
-    /// Hotwire.config.pathConfigurationHTTPHeaders = [
-    ///     "X-App-Name": "Birthdaze",
-    ///     "X-App-Version": "2.1.0",
-    ///     "X-App-Build": "42"
-    /// ]
-    /// ```
-    public var pathConfigurationHTTPHeaders: [String: String] = [:]
 
     /// The view controller used in `Navigator` for web requests. Must be
     /// a `VisitableViewController` or subclass.

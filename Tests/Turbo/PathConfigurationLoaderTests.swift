@@ -58,14 +58,11 @@ class PathConfigurationLoaderTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: loader.configurationCacheURL(for: serverURL).path))
     }
 
-    func test_server_sendsConfiguredHTTPHeaders() throws {
-        let originalHeaders = Hotwire.config.pathConfigurationHTTPHeaders
-        defer { Hotwire.config.pathConfigurationHTTPHeaders = originalHeaders }
+    func test_server_sendsUserAgentHeader() throws {
+        let originalIdentifier = Hotwire.config.appIdentifier
+        defer { Hotwire.config.appIdentifier = originalIdentifier }
 
-        Hotwire.config.pathConfigurationHTTPHeaders = [
-            "X-App-Name": "TestApp",
-            "X-App-Version": "1.2.3"
-        ]
+        Hotwire.config.appIdentifier = "TestApp"
 
         let loader = PathConfigurationLoader(sources: [.server(serverURL)])
         clearCache(loader.configurationCacheURL(for: serverURL))
@@ -82,8 +79,9 @@ class PathConfigurationLoaderTests: XCTestCase {
         wait(for: [expectation])
 
         let request = try XCTUnwrap(seenRequest)
-        XCTAssertEqual(request.value(forHTTPHeaderField: "X-App-Name"), "TestApp")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "X-App-Version"), "1.2.3")
+        let userAgent = try XCTUnwrap(request.value(forHTTPHeaderField: "User-Agent"))
+        XCTAssertEqual(userAgent, Hotwire.config.userAgent)
+        XCTAssertTrue(userAgent.contains("TestApp/"))
     }
 
     private func stubRequest(for loader: PathConfigurationLoader) -> XCTestExpectation {
