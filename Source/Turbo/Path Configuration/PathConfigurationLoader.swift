@@ -41,9 +41,11 @@ final class PathConfigurationLoader {
         let session = options?.urlSessionConfiguration.map { URLSession(configuration: $0) } ?? URLSession.shared
 
         var request = URLRequest(url: url)
-        for (field, value) in Hotwire.config.pathConfigurationHTTPHeaders {
-            request.setValue(value, forHTTPHeaderField: field)
-        }
+        // Send the same user agent the WebView uses so the server can
+        // identify the app and its version on the path-configuration
+        // request — which, being a plain URLSession request, would not
+        // otherwise carry the WebView's user agent.
+        request.setValue(Hotwire.config.userAgent, forHTTPHeaderField: "User-Agent")
 
         session.dataTask(with: request) { [weak self] data, response, error in
             guard let data = data,

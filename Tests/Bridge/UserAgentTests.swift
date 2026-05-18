@@ -26,4 +26,44 @@ class UserAgentTests: XCTestCase {
         )
         XCTAssertEqual(userAgentSubstring, "Hotwire Demo; Hotwire Native iOS; Turbo Native iOS; bridge-components: [one two]")
     }
+
+    func testAppTokenWithVersionAndBuild() {
+        XCTAssertEqual(
+            UserAgent.appToken(identifier: "Birthdaze", version: "1.5.0", build: "202605170900"),
+            "Birthdaze/1.5.0 (build 202605170900)"
+        )
+    }
+
+    func testAppTokenWithoutBuild() {
+        XCTAssertEqual(
+            UserAgent.appToken(identifier: "Birthdaze", version: "1.5.0", build: nil),
+            "Birthdaze/1.5.0"
+        )
+    }
+
+    func testAppTokenDegradesToIdentifierWithoutVersion() {
+        XCTAssertEqual(
+            UserAgent.appToken(identifier: "Birthdaze", version: nil, build: "42"),
+            "Birthdaze"
+        )
+    }
+
+    func testAppTokenIsNilWithoutIdentifier() {
+        XCTAssertNil(UserAgent.appToken(identifier: nil, version: "1.5.0", build: "42"))
+        XCTAssertNil(UserAgent.appToken(identifier: "", version: "1.5.0", build: "42"))
+    }
+
+    func testUserAgentSubstringLeadsWithAppToken() {
+        let userAgentSubstring = UserAgent.build(
+            appIdentifier: "Birthdaze",
+            appVersion: "1.5.0",
+            appBuild: "202605170900",
+            applicationPrefix: nil,
+            componentTypes: []
+        )
+        XCTAssertEqual(
+            userAgentSubstring,
+            "Birthdaze/1.5.0 (build 202605170900) Hotwire Native iOS; Turbo Native iOS; bridge-components: []"
+        )
+    }
 }
