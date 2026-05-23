@@ -4,6 +4,7 @@ extension WKWebView {
     static func debugInspectable(configuration: WKWebViewConfiguration) -> WKWebView {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.makeInspectableInDebugBuilds()
+        webView.allowsLinkPreview = false
         return webView
     }
 }
