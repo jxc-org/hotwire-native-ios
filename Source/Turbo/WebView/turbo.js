@@ -236,7 +236,19 @@
     }, TURBO_LOAD_TIMEOUT)
   }
 
-  if (window.Turbo || window.Turbolinks) {
+  // A page can opt out of the Turbo Drive handshake entirely by declaring
+  // <meta name="hotwire-native-bridge" content="none">. Useful for static
+  // pages served to a Hotwire Native app that have no real Turbo Drive on
+  // them at all (e.g. an edge-served maintenance/offline page) — without
+  // this, such a page must either wait out TURBO_LOAD_TIMEOUT and fail
+  // (pageLoadFailed, shown natively as a "configuration error"), or hand-rig
+  // a fake window.Turbo matching this file's internal registerAdapter/
+  // pageLoaded contract, which silently breaks if that contract changes.
+  const bridgeMeta = document.querySelector('meta[name="hotwire-native-bridge"]')
+
+  if (bridgeMeta && bridgeMeta.content === "none") {
+    window.turboNative.pageLoaded()
+  } else if (window.Turbo || window.Turbolinks) {
     setup()
   } else {
     setupOnLoad()
