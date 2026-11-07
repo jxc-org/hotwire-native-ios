@@ -1,5 +1,8 @@
 import Foundation
 
+/// Navigates in-app to http(s) URLs on the app's own host. Same-host URLs with
+/// any other scheme (`webcal:`, `mailto:`, `tel:`, ...) can't be fetched as a
+/// Turbo visit, so they are left for `SystemNavigationRouteDecisionHandler`.
 public final class AppNavigationRouteDecisionHandler: RouteDecisionHandler {
     public let name: String = "app-navigation"
 
@@ -7,6 +10,10 @@ public final class AppNavigationRouteDecisionHandler: RouteDecisionHandler {
 
     public func matches(location: URL,
                         configuration: Navigator.Configuration) -> Bool {
+        guard location.scheme == "http" || location.scheme == "https" else {
+            return false
+        }
+
         if #available(iOS 16, *) {
             return configuration.startLocation.host() == location.host()
         }

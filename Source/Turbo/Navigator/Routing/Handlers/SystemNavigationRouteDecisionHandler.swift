@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-/// Opens external URLs via `openURL(_:options:completionHandler)`.
+/// Opens external URLs, and same-host non-http(s) URLs (`webcal:`, `mailto:`, `tel:`), via `openURL(_:options:completionHandler)`.
 public final class SystemNavigationRouteDecisionHandler: RouteDecisionHandler {
     public let name: String = "system-navigation"
 
@@ -9,6 +9,10 @@ public final class SystemNavigationRouteDecisionHandler: RouteDecisionHandler {
 
     public func matches(location: URL,
                         configuration: Navigator.Configuration) -> Bool {
+        guard location.scheme == "http" || location.scheme == "https" else {
+            return true
+        }
+
         if #available(iOS 16, *) {
             return configuration.startLocation.host() != location.host()
         }

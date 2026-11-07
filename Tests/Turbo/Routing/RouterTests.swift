@@ -77,6 +77,32 @@ final class RouterTests: XCTestCase {
         XCTAssertFalse(matchSpy2.handleWasCalled)
         XCTAssertEqual(result, Router.Decision.navigate)
     }
+
+    // Uses a fresh HotwireConfig so the real default handler list is under test,
+    // not a hand-built order (and not Hotwire.config, which other tests may mutate).
+    func test_default_handlers_cancel_same_host_webcal_instead_of_navigating() {
+        let router = HotwireConfig().router
+
+        let result = router.decideRoute(
+            for: URL(string: "webcal://my.app.com/cal/x")!,
+            configuration: navigatorConfiguration,
+            navigator: navigator
+        )
+
+        XCTAssertEqual(result, Router.Decision.cancel)
+    }
+
+    func test_default_handlers_still_navigate_same_host_https() {
+        let router = HotwireConfig().router
+
+        let result = router.decideRoute(
+            for: url,
+            configuration: navigatorConfiguration,
+            navigator: navigator
+        )
+
+        XCTAssertEqual(result, Router.Decision.navigate)
+    }
 }
 
 final class NoMatchRouteDecisionHandlerSpy: RouteDecisionHandler {
