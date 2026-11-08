@@ -37,6 +37,8 @@ class NavigationHierarchyController {
         if let alert = controller as? UIAlertController {
             presentAlert(alert, via: proposal)
         } else {
+            controller.routedLocation = proposal.url
+
             if let visitable = controller as? Visitable {
                 visitable.visitableView.allowsPullToRefresh = proposal.pullToRefreshEnabled
             }
@@ -72,6 +74,15 @@ class NavigationHierarchyController {
         } else {
             navigationController.popViewController(animated: animated)
         }
+    }
+
+    func dismissModal(animated: Bool, completion: (() -> Void)? = nil) {
+        guard navigationController.presentedViewController != nil else {
+            completion?()
+            return
+        }
+
+        navigationController.dismiss(animated: animated, completion: completion)
     }
 
     func clearAll(animated: Bool) {
@@ -136,9 +147,9 @@ class NavigationHierarchyController {
                                with controller: UIViewController,
                                via proposal: VisitProposal,
                                didReplaceModalContext: Bool = false) {
-        if visitingSamePage(on: navigationController, with: controller, via: proposal) {
+        if visitingSamePage(on: navigationController, via: proposal) {
             navigationController.replaceLastViewController(with: controller)
-        } else if visitingPreviousPage(on: navigationController, with: controller, via: proposal) {
+        } else if visitingPreviousPage(on: navigationController, via: proposal) {
             navigationController.popViewController(animated: proposal.animated)
         } else if proposal.isRedirect && !didReplaceModalContext {
             navigationController.replaceLastViewController(with: controller)
@@ -152,27 +163,41 @@ class NavigationHierarchyController {
         }
     }
 
-    private func visitingSamePage(on navigationController: UINavigationController,
-                                  with controller: UIViewController,
-                                  via proposal: VisitProposal) -> Bool {
-        if let visitable = navigationController.topViewController as? Visitable {
-            return visitable.initialVisitableURL.isSameLocation(as: proposal.url, pathProperties: proposal.properties)
-        } else if let topViewController = navigationController.topViewController {
-            return topViewController.isMember(of: type(of: controller))
+    private func visitingSamePage(
+        on navigationController: UINavigationController,
+        via proposal: VisitProposal
+    ) -> Bool {
+        guard let topViewController = navigationController.topViewController else { return false }
+
+        guard let location = topViewController.routedLocation else {
+            logger.warning("Top view controller \(topViewController) has no routed location; " +
+                           "treating the visit as a new page. Expected for controllers pushed onto the stack outside the navigator.")
+            return false
         }
-        return false
+
+        return location.isSameLocation(
+            as: proposal.url,
+            pathProperties: proposal.properties
+        )
     }
 
-    private func visitingPreviousPage(on navigationController: UINavigationController,
-                                      with controller: UIViewController,
-                                      via proposal: VisitProposal) -> Bool {
+    private func visitingPreviousPage(
+        on navigationController: UINavigationController,
+        via proposal: VisitProposal
+    ) -> Bool {
         guard navigationController.viewControllers.count >= 2 else { return false }
 
         let previousController = navigationController.viewControllers[navigationController.viewControllers.count - 2]
-        if let previousVisitable = previousController as? VisitableViewController {
-            return previousVisitable.initialVisitableURL.isSameLocation(as: proposal.url, pathProperties: proposal.properties)
+        guard let location = previousController.routedLocation else {
+            logger.warning("Previous view controller \(previousController) has no routed location; " +
+                           "treating the visit as a new page. Expected for controllers pushed onto the stack outside the navigator.")
+            return false
         }
-        return type(of: previousController) == type(of: controller)
+
+        return location.isSameLocation(
+            as: proposal.url,
+            pathProperties: proposal.properties
+        )
     }
 
     private func replace(with controller: UIViewController, via proposal: VisitProposal) {

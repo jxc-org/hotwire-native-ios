@@ -83,6 +83,55 @@ final class NavigationHierarchyControllerTests: XCTestCase {
         assertVisited(url: oneURL, on: .main)
     }
 
+    func test_customViewController_visitingDifferentURL_pushesOnMainStack() {
+        let navigator = makeCustomViewControllerNavigator()
+
+        navigator.route(oneURL)
+        XCTAssertEqual(navigationController.viewControllers.count, 1)
+        XCTAssert(navigationController.topViewController is CustomViewController)
+
+        navigator.route(twoURL)
+        XCTAssertEqual(navigationController.viewControllers.count, 2)
+        XCTAssert(navigationController.topViewController is CustomViewController)
+    }
+
+    func test_customViewController_visitingSameURL_replacesOnMainStack() {
+        let navigator = makeCustomViewControllerNavigator()
+
+        navigator.route(oneURL)
+        XCTAssertEqual(navigationController.viewControllers.count, 1)
+
+        navigator.route(oneURL)
+        XCTAssertEqual(navigationController.viewControllers.count, 1)
+        XCTAssert(navigationController.topViewController is CustomViewController)
+    }
+
+    func test_customViewController_visitingPreviousURL_popsOnMainStack() {
+        let navigator = makeCustomViewControllerNavigator()
+
+        navigator.route(oneURL)
+        navigator.route(twoURL)
+        XCTAssertEqual(navigationController.viewControllers.count, 2)
+
+        navigator.route(oneURL)
+        XCTAssertEqual(navigationController.viewControllers.count, 1)
+        XCTAssert(navigationController.topViewController is CustomViewController)
+    }
+
+    func test_unroutedViewController_onStack_visitPushesOnMainStack() {
+        // A view controller pushed onto the stack outside the navigator (e.g. mixed native
+        // navigation) has no routed location. A subsequent visit must treat it as a new page
+        // and push — never crash or incorrectly replace/pop.
+        navigationController.pushViewController(UIViewController(), animated: false)
+        XCTAssertEqual(navigationController.viewControllers.count, 1)
+
+        navigator.route(oneURL)
+
+        XCTAssertEqual(navigationController.viewControllers.count, 2)
+        XCTAssert(navigationController.topViewController is VisitableViewController)
+        assertVisited(url: oneURL, on: .main)
+    }
+
     func test_default_default_default_replaceAction_replacesOnMainStack() {
         let proposal = VisitProposal(action: .replace)
         navigator.route(proposal)
@@ -467,7 +516,140 @@ final class NavigationHierarchyControllerTests: XCTestCase {
         XCTAssertEqual(modalNavigationController.visibleViewController?.isModalInPresentation, false)
     }
 
+    // MARK: Redirects
+
+    /// A followed redirect within the default context is re-proposed by Turbo with
+    /// a `replace` action, so it replaces the pre-redirect controller in place and
+    /// must not pop the screen beneath it.
+    func test_redirect_mainToMain_replacesRedirectedControllerAndKeepsUnderlyingScreen() {
+        navigator.route(oneURL)
+        navigator.route(twoURL)
+        XCTAssertEqual(navigationController.viewControllers.count, 2)
+
+        // /two responded with a redirect to /three, re-proposed by the main session.
+        let redirect = VisitProposal(path: "/three", action: .replace, context: .default, redirected: true)
+        navigator.session(session, didProposeVisit: redirect)
+
+        XCTAssertEqual(navigationController.viewControllers.count, 2)
+        let underlying = navigationController.viewControllers.first as? VisitableViewController
+        XCTAssertEqual(underlying?.initialVisitableURL, oneURL)
+        assertVisited(url: redirect.url, on: .main)
+    }
+
+    /// A redirect that crosses from the default context to a modal is re-proposed by
+    /// the main session (which performed the request). The stranded main controller
+    /// must be popped so it isn't left orphaned beneath the modal.
+    func test_redirect_mainToModal_popsOrphanedMainControllerAndPresentsModal() {
+        navigator.route(oneURL)
+        navigator.route(twoURL)
+        XCTAssertEqual(navigationController.viewControllers.count, 2)
+
+        let redirect = VisitProposal(path: "/modal", action: .replace, context: .modal, redirected: true)
+        navigator.session(session, didProposeVisit: redirect)
+
+        XCTAssertEqual(navigationController.viewControllers.count, 1)
+        XCTAssertEqual(modalNavigationController.viewControllers.count, 1)
+        XCTAssertIdentical(navigationController.presentedViewController, modalNavigationController)
+        assertVisited(url: redirect.url, on: .modal)
+    }
+
+    /// A followed redirect within the modal context replaces the pre-redirect
+    /// controller on the modal stack and must not pop the modal screen beneath it.
+    func test_redirect_modalToModal_replacesRedirectedControllerAndKeepsUnderlyingModalScreen() {
+        navigator.route(VisitProposal(path: "/one", context: .modal))
+        navigator.route(VisitProposal(path: "/two", context: .modal))
+        XCTAssertEqual(modalNavigationController.viewControllers.count, 2)
+
+        let redirect = VisitProposal(path: "/three", action: .replace, context: .modal, redirected: true)
+        navigator.session(modalSession, didProposeVisit: redirect)
+
+        XCTAssertEqual(modalNavigationController.viewControllers.count, 2)
+        let underlying = modalNavigationController.viewControllers.first as? VisitableViewController
+        XCTAssertEqual(underlying?.initialVisitableURL, oneURL)
+        assertVisited(url: redirect.url, on: .modal)
+    }
+
+    /// A redirect that crosses from the modal context to the default context is
+    /// re-proposed by the modal session. The modal is dismissed and the redirected
+    /// destination is routed onto the main stack.
+    ///
+    /// Fork (jxc-org 07737bd): the destination is PUSHED on top of the screen that
+    /// presented the modal, not swapped in for it. Upstream replaces it (count 1),
+    /// which makes a modal form's redirect to a main-context page replace
+    /// the screen that presented the modal. See BIRTHDAZE-60.
+    func test_redirect_modalToMain_dismissesModalAndRoutesOntoMainStack() {
+        navigator.route(oneURL)
+        navigator.route(VisitProposal(path: "/modal", context: .modal))
+        XCTAssertIdentical(navigationController.presentedViewController, modalNavigationController)
+
+        let redirect = VisitProposal(path: "/three", action: .replace, context: .default, redirected: true)
+        navigator.session(modalSession, didProposeVisit: redirect)
+
+        XCTAssertEqual(navigationController.viewControllers.count, 2)
+        let underlying = navigationController.viewControllers.first as? VisitableViewController
+        XCTAssertEqual(underlying?.initialVisitableURL, oneURL)
+        assertVisited(url: redirect.url, on: .main)
+        XCTAssertNil(navigationController.presentedViewController)
+    }
+
+    func test_redirect_modalToMain_singleControllerModal_routesAfterModalDismissalCompletes() {
+        assertModalToMainRedirectWaitsForDismissal(
+            modalProposals: [VisitProposal(path: "/modal-one", context: .modal)]
+        )
+    }
+
+    func test_redirect_modalToMain_multipleControllerModal_routesAfterModalDismissalCompletes() {
+        assertModalToMainRedirectWaitsForDismissal(
+            modalProposals: [
+                VisitProposal(path: "/modal-one", context: .modal),
+                VisitProposal(path: "/modal-two", context: .modal)
+            ]
+        )
+    }
+
     // MARK: Private
+
+    private func assertModalToMainRedirectWaitsForDismissal(modalProposals: [VisitProposal]) {
+        let delayedNavigationController = DelayedDismissalNavigationController()
+        let testModalNavigationController = TestableNavigationController()
+        let redirectDelegate = RedirectProposalRecordingDelegate()
+        let testSession = Session(webView: Hotwire.config.makeWebView())
+        let testModalSession = Session(webView: Hotwire.config.makeWebView())
+        let testNavigator = Navigator(
+            session: testSession,
+            modalSession: testModalSession,
+            delegate: redirectDelegate,
+            configuration: .init(name: "Test", startLocation: oneURL)
+        )
+        testNavigator.hierarchyController = NavigationHierarchyController(
+            delegate: testNavigator,
+            navigationController: delayedNavigationController,
+            modalNavigationController: testModalNavigationController
+        )
+        loadNavigationControllerInWindow(delayedNavigationController)
+
+        testNavigator.route(oneURL)
+        for proposal in modalProposals {
+            testNavigator.route(proposal)
+        }
+
+        let redirect = VisitProposal(path: "/three", action: .replace, context: .default, redirected: true)
+        testNavigator.session(testModalSession, didProposeVisit: redirect)
+
+        XCTAssertTrue(redirectDelegate.redirectProposals.isEmpty)
+        XCTAssertIdentical(delayedNavigationController.presentedViewController, testModalNavigationController)
+
+        delayedNavigationController.completeDismissal()
+
+        XCTAssertEqual(redirectDelegate.redirectProposals.count, 1)
+        let receivedProposal = redirectDelegate.redirectProposals[0]
+        XCTAssertEqual(receivedProposal.url, redirect.url)
+        XCTAssertEqual(receivedProposal.options.action, redirect.options.action)
+        XCTAssertEqual(receivedProposal.context, redirect.context)
+        XCTAssertEqual(receivedProposal.isRedirect, redirect.isRedirect)
+        XCTAssertNil(delayedNavigationController.presentedViewController)
+        XCTAssertEqual(testNavigator.session.activeVisitable?.initialVisitableURL, redirect.url)
+    }
 
     private enum Context {
         case main, modal
@@ -482,14 +664,37 @@ final class NavigationHierarchyControllerTests: XCTestCase {
 
     private var navigator: Navigator!
     private let alertControllerDelegate = AlertControllerDelegate()
+    // `Navigator.delegate` is weak, so the test must hold a strong reference.
+    private let customViewControllerDelegate = CustomViewControllerDelegate()
     private var hierarchyController: NavigationHierarchyController!
     private var navigationController: TestableNavigationController!
     private var modalNavigationController: TestableNavigationController!
 
     private let window = UIWindow()
 
+    // A navigator whose delegate routes custom, non-`Visitable` view controllers, wired to the
+    // same navigation controllers the test asserts against.
+    private func makeCustomViewControllerNavigator() -> Navigator {
+        let navigator = Navigator(
+            session: session,
+            modalSession: modalSession,
+            delegate: customViewControllerDelegate,
+            configuration: .init(name: "Test", startLocation: oneURL)
+        )
+        navigator.hierarchyController = NavigationHierarchyController(
+            delegate: navigator,
+            navigationController: navigationController,
+            modalNavigationController: modalNavigationController
+        )
+        return navigator
+    }
+
     // Simulate a "real" app so presenting view controllers works under test.
     private func loadNavigationControllerInWindow() {
+        loadNavigationControllerInWindow(navigationController)
+    }
+
+    private func loadNavigationControllerInWindow(_ navigationController: UINavigationController) {
         window.rootViewController = navigationController
         window.makeKeyAndVisible()
         navigationController.loadViewIfNeeded()
@@ -520,13 +725,15 @@ extension VisitProposal {
          action: VisitAction = .advance,
          context: Navigation.Context = .default,
          presentation: Navigation.Presentation = .default,
+         redirected: Bool = false,
          additionalProperties: [String: AnyHashable] = [:]) {
         let baseURL = URL(string: "https://example.com")!
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
         components?.path = path.hasPrefix("/") ? path : "/\(path)"
         components?.queryItems = queryItems
         let url = components!.url!
-        let options = VisitOptions(action: action, response: nil)
+        let response = redirected ? VisitResponse(statusCode: 200, redirected: true) : nil
+        let options = VisitOptions(action: action, response: response)
         let defaultProperties: PathProperties = [
             "context": context.rawValue,
             "presentation": presentation.rawValue
@@ -546,5 +753,47 @@ private class AlertControllerDelegate: NavigatorDelegate {
         }
 
         return .accept
+    }
+}
+
+// MARK: - CustomViewControllerDelegate
+
+/// A non-`Visitable` custom view controller. Two instances at different URLs share a type, so
+/// the navigator must rely on the stamped routed location — not type equality — to tell them apart.
+private final class CustomViewController: UIViewController {}
+
+private class CustomViewControllerDelegate: NavigatorDelegate {
+    func handle(proposal: VisitProposal, from navigator: Navigator) -> ProposalResult {
+        .acceptCustom(CustomViewController())
+    }
+}
+
+// MARK: - RedirectProposalRecordingDelegate
+
+private final class RedirectProposalRecordingDelegate: NavigatorDelegate {
+    private(set) var redirectProposals = [VisitProposal]()
+
+    func handle(proposal: VisitProposal, from navigator: Navigator) -> ProposalResult {
+        if proposal.isRedirect {
+            redirectProposals.append(proposal)
+        }
+
+        return .accept
+    }
+}
+
+// MARK: - DelayedDismissalNavigationController
+
+private final class DelayedDismissalNavigationController: TestableNavigationController {
+    private var dismissalCompletion: (() -> Void)?
+
+    override func dismiss(animated flag: Bool, completion: (() -> Void)? = nil) {
+        dismissalCompletion = completion
+    }
+
+    func completeDismissal() {
+        presentedViewController = nil
+        dismissalCompletion?()
+        dismissalCompletion = nil
     }
 }
