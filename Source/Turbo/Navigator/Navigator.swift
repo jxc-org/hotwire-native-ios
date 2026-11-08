@@ -54,6 +54,7 @@ public class Navigator {
             return
         }
 
+        logger.info("Navigator starting at \(configuration.startLocation.absoluteString)")
         route(configuration.startLocation)
     }
 
@@ -77,11 +78,12 @@ public class Navigator {
     }
 
     func route(_ proposal: VisitProposal, dismissedModal: Bool) {
-        if routeDecision(for: proposal.url) == .cancel {
+        if routeDecision(for: proposal) == .cancel {
             return
         }
 
         guard let controller = controller(for: proposal) else { return }
+        logger.info("Routing \(proposal.url.absoluteString)")
         hierarchyController.route(controller: controller, proposal: proposal, dismissedModal: dismissedModal)
     }
 
@@ -163,9 +165,9 @@ public class Navigator {
         }
     }
 
-    private func routeDecision(for location: URL) -> Router.Decision {
+    private func routeDecision(for proposal: VisitProposal) -> Router.Decision {
         return Hotwire.config.router.decideRoute(
-            for: location,
+            for: proposal,
             configuration: configuration,
             navigator: self
         )
@@ -176,13 +178,32 @@ public class Navigator {
 
 extension Navigator: SessionDelegate {
     public func session(_ session: Session, didProposeVisit proposal: VisitProposal) {
-        var dismissedModal = false
-        if proposal.isRedirect && session === modalSession {
-            dismissedModal = true
-            let animatePop = proposal.context == .default
-            pop(animated: animatePop)
+        if proposal.isRedirect {
+            // Turbo re-proposes a followed redirect with a `replace` action (it also
+            // performed `history.replaceState` on the web side), so routing the
+            // proposal already rewrites the pre-redirect controller in place. We only
+            // need to pop that controller when the redirect moves across the
+            // default <-> modal boundary, otherwise the
+            // controller is orphaned on the stack it was pushed onto.
+            let sessionIsModal = session === modalSession
+            let proposalIsModal = proposal.context == .modal
+
+            switch (sessionIsModal, proposalIsModal) {
+            case (true, false):
+                // Fork: route after the dismissal completes (upstream #261), but tell the
+                // hierarchy controller a modal was dismissed so the destination is PUSHED
+                // onto the main stack instead of replacing its top controller (fork 07737bd).
+                hierarchyController.dismissModal(animated: true) { [weak self] in
+                    self?.route(proposal, dismissedModal: true)
+                }
+                return
+            case (false, true):
+                pop(animated: false)
+            default:
+                break
+            }
         }
-        route(proposal, dismissedModal: dismissedModal)
+        route(proposal)
     }
 
     public func session(_ session: Session, didProposeVisitToCrossOriginRedirect location: URL) {
@@ -207,10 +228,16 @@ extension Navigator: SessionDelegate {
         }
     }
 
-    public func session(_ session: Session, didFailRequestForVisitable visitable: Visitable, error: Error) {
-        delegate?.visitableDidFailRequest(visitable, error: error) {
-            session.reload()
+    public func session(_ session: Session, didFailRequestForVisitable visitable: Visitable, error: HotwireNativeError) {
+        let retryHandler: (() -> Void)? = {
+            if session.topmostVisitable == nil {
+                // Preserve reload semantics (force cold boot) when there is no topmost visitable yet.
+                session.visit(visitable, reload: true)
+            } else {
+                session.reload()
+            }
         }
+        delegate?.visitableDidFailRequest(visitable, error: error, retryHandler: retryHandler)
     }
 
     public func session(_ session: Session, decidePolicyFor navigationAction: WKNavigationAction) -> WebViewPolicyManager.Decision {
@@ -226,7 +253,11 @@ extension Navigator: SessionDelegate {
     }
 
     public func session(_ session: Session, didReceiveAuthenticationChallenge challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        delegate?.didReceiveAuthenticationChallenge(challenge, completionHandler: completionHandler)
+        guard let delegate else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        delegate.didReceiveAuthenticationChallenge(challenge, completionHandler: completionHandler)
     }
 
     public func sessionDidFinishRequest(_ session: Session) {
@@ -257,9 +288,9 @@ extension Navigator: NavigationHierarchyControllerDelegate {
     func refreshVisitable(navigationStack: NavigationHierarchyController.NavigationStackType, newTopmostVisitable: any Visitable) {
         switch navigationStack {
         case .main:
-            session.visit(newTopmostVisitable, action: .restore)
+            session.visit(newTopmostVisitable, action: .replace)
         case .modal:
-            modalSession.visit(newTopmostVisitable, action: .restore)
+            modalSession.visit(newTopmostVisitable, action: .replace)
         }
     }
 }
@@ -274,6 +305,7 @@ extension Navigator: WKUIControllerDelegate {
 
 extension Navigator {
     private func inspectAllSessions() {
+        logger.info("Inspecting sessions")
         [session, modalSession].forEach { inspect($0) }
     }
 
@@ -287,9 +319,13 @@ extension Navigator {
         /// side-effects for the next visit (like showing the wrong bridge components). We can't just
         /// check if the view controller is visible, since it may be further back in the stack of a navigation controller.
         /// Seeing if there is a parent was the best solution I could find.
-        guard let viewController = session.activeVisitable?.visitableViewController,
-              viewController.parent != nil
-        else {
+        guard let viewController = session.activeVisitable?.visitableViewController else {
+            logger.info("Skipping session reload: no visitableViewController found")
+            return
+        }
+
+        guard viewController.parent != nil else {
+            logger.info("Skipping session reload: visitableViewController has no parent")
             return
         }
 
@@ -297,7 +333,10 @@ extension Navigator {
         // Instead, save the session in `backgroundTerminatedWebViewSessions`
         // and reload it when the app is back in foreground.
         if appLifecycleObserver.appState == .background {
-            backgroundTerminatedWebViewSessions.append(session)
+            if !backgroundTerminatedWebViewSessions.contains(where: { $0 === session }) {
+                logger.info("Skipping session reload: app in background")
+                backgroundTerminatedWebViewSessions.append(session)
+            }
             return
         }
 
@@ -319,16 +358,21 @@ extension Navigator {
     private func inspect(_ session: Session) {
         if let index = backgroundTerminatedWebViewSessions.firstIndex(where: { $0 === session }) {
             backgroundTerminatedWebViewSessions.remove(at: index)
+            logger.debug("Reloading background terminated web view")
             reload(session)
             return
         }
 
         guard let _ = session.topmostVisitable?.initialVisitableURL else {
+            logger.debug("Skipping inspection: no topmostVisitable found")
             return
         }
 
         session.webView.queryWebContentProcessState { [weak self] state in
-            guard case .terminated = state else { return }
+            guard case .terminated = state else {
+                logger.debug("Skipping web view recreation: process not terminated")
+                return
+            }
             self?.recreateWebView(for: session)
         }
     }
@@ -338,8 +382,12 @@ extension Navigator {
     /// - Parameter session: The session to recreate.
     private func recreateWebView(for session: Session) {
         guard let _ = session.activeVisitable?.visitableViewController,
-              let url = session.activeVisitable?.initialVisitableURL else { return }
+              let url = session.activeVisitable?.initialVisitableURL else {
+            logger.debug("Skipping web view recreation: no initialVisitableURL found")
+            return
+        }
 
+        logger.debug("Recreating web view for \(url.absoluteString)")
         let newSession = Session(webView: Hotwire.config.makeWebView())
         newSession.pathConfiguration = session.pathConfiguration
         newSession.delegate = self

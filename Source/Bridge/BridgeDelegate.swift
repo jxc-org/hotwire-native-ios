@@ -52,7 +52,6 @@ public final class BridgeDelegate: BridgingDelegate {
     public func webViewDidBecomeActive(_ webView: WKWebView) {
         bridge = Bridge.getBridgeFor(webView)
         bridge?.delegate = self
-        destinationIsActive = true
 
         if bridge == nil {
             logger.warning("bridgeNotInitializedForWebView")
@@ -62,7 +61,6 @@ public final class BridgeDelegate: BridgingDelegate {
     public func webViewDidBecomeDeactivated() {
         bridge?.delegate = nil
         bridge = nil
-        destinationIsActive = false
     }
     
     @discardableResult
@@ -84,19 +82,16 @@ public final class BridgeDelegate: BridgingDelegate {
     
     public func onViewDidLoad() {
         logger.debug("[Bridge] bridgeDestinationViewDidLoad: \(self.resolvedLocation)")
-        destinationIsActive = true
         activeComponents.forEach { $0.viewDidLoad() }
     }
     
     public func onViewWillAppear() {
         logger.debug("[Bridge] bridgeDestinationViewWillAppear: \(self.resolvedLocation)")
-        destinationIsActive = true
         activeComponents.forEach { $0.viewWillAppear() }
     }
     
     public func onViewDidAppear() {
         logger.debug("[Bridge] bridgeDestinationViewDidAppear: \(self.resolvedLocation)")
-        destinationIsActive = true
         activeComponents.forEach { $0.viewDidAppear() }
     }
     
@@ -107,7 +102,6 @@ public final class BridgeDelegate: BridgingDelegate {
     
     public func onViewDidDisappear() {
         activeComponents.forEach { $0.viewDidDisappear() }
-        destinationIsActive = false
         logger.debug("[Bridge] bridgeDestinationViewDidDisappear: \(self.resolvedLocation)")
     }
     
@@ -147,14 +141,20 @@ public final class BridgeDelegate: BridgingDelegate {
     // MARK: Private
     
     private var initializedComponents: [String: BridgeComponent] = [:]
-    private var destinationIsActive = false
     private let componentTypes: [BridgeComponent.Type]
+    private var destinationIsActive: Bool {
+        bridge != nil
+    }
     private var resolvedLocation: String {
         webView?.url?.absoluteString ?? location
     }
     
     private var activeComponents: [BridgeComponent] {
-        return initializedComponents.values.filter { _ in destinationIsActive }
+        guard destinationIsActive else {
+            return []
+        }
+
+        return Array(initializedComponents.values)
     }
     
     private func getOrCreateComponent(name: String) -> BridgeComponent? {
