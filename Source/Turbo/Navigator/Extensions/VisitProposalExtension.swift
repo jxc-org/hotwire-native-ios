@@ -13,6 +13,10 @@ public extension VisitProposal {
         properties.modalStyle
     }
 
+    var pane: Navigation.Pane? {
+        properties.pane
+    }
+
     var pullToRefreshEnabled: Bool {
         properties.pullToRefreshEnabled
     }

@@ -26,6 +26,12 @@ public extension PathProperties {
         return modalStyle
     }
 
+    /// The pane of a `HotwireSplitViewController` this URL opens in, or `nil` to stay in the current pane.
+    var pane: Navigation.Pane? {
+        guard let rawValue = self["pane"] as? String else { return nil }
+        return Navigation.Pane(rawValue: rawValue)
+    }
+
     var pullToRefreshEnabled: Bool {
         self["pull_to_refresh_enabled"] as? Bool ?? true
     }

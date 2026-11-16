@@ -23,10 +23,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     private func configureHotwire() {
         // Load the path configuration
-        Hotwire.loadPathConfiguration(from: [
-            .file(Bundle.main.url(forResource: "path-configuration", withExtension: "json")!),
-            .server(Demo.current.appendingPathComponent("configurations/ios_v1.json"))
-        ])
+        // The server configuration replaces the bundled one once it loads. The demo server's
+        // copy has no "pane" rules, so split mode uses the bundled file only.
+        var sources: [PathConfiguration.Source] = [
+            .file(Bundle.main.url(forResource: "path-configuration", withExtension: "json")!)
+        ]
+        if !Demo.usesSplitView {
+            sources.append(.server(Demo.current.appendingPathComponent("configurations/ios_v1.json")))
+        }
+        Hotwire.loadPathConfiguration(from: sources)
 
         // Set an optional custom user agent application prefix.
         Hotwire.config.applicationUserAgentPrefix = "Hotwire Demo;"

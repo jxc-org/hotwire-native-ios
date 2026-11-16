@@ -8,4 +8,10 @@ struct Demo {
     static var current: URL {
         remote
     }
+
+    /// Launch with `-HotwireSplit` to run the two-pane `HotwireSplitViewController` demo
+    /// instead of tabs.
+    static var usesSplitView: Bool {
+        ProcessInfo.processInfo.arguments.contains("-HotwireSplit")
+    }
 }
