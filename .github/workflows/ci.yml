@@ -1,0 +1,48 @@
+name: CI
+
+# Unit tests for our fork on omar (the self-hosted macOS runner). omar runs one
+# job at a time and also builds app releases, so this only runs when package
+# code changes, and a newer push cancels the older run.
+on:
+  pull_request:
+    paths:
+      - 'Source/**'
+      - 'Tests/**'
+      - 'Package.swift'
+      - 'Package.resolved'
+      - 'Makefile'
+      - '.github/workflows/ci.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'Source/**'
+      - 'Tests/**'
+      - 'Package.swift'
+      - 'Package.resolved'
+      - 'Makefile'
+      - '.github/workflows/ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: omar
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: zsh {0}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Xcode and simulator
+        run: |
+          xcodebuild -version
+          echo "Destination: $(make -s destination)"
+
+      - name: Test
+        run: make test

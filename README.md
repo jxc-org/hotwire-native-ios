@@ -10,6 +10,10 @@ This native Swift library integrates with your [Hotwire](https://hotwired.dev) w
 
 Read more on [native.hotwired.dev](https://native.hotwired.dev).
 
+## jxc-org fork
+
+This is the jxc-org fork used by birthdaze, lumberlog and costco-checker. Run the tests with `make test` (the newest available iPhone simulator; `make help` lists the targets). CI runs the same target on the `omar` runner for pull requests and pushes to main.
+
 ## Contributing
 
 Hotwire Native for iOS is open-source software, freely distributable under the terms of an [MIT-style license](LICENSE). The [source code is hosted on GitHub](https://github.com/hotwired/hotwire-native-bridge). Development is sponsored by [37signals](https://37signals.com/).
