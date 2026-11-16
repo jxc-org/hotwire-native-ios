@@ -12,7 +12,7 @@ Read more on [native.hotwired.dev](https://native.hotwired.dev).
 
 ## jxc-org fork
 
-This is the jxc-org fork used by birthdaze, lumberlog and costco-checker. Run the tests with `make test` (the newest available iPhone simulator; `make help` lists the targets). CI runs the same target on the `omar` runner for pull requests and pushes to main.
+This is the jxc-org fork used by birthdaze, lumberlog and costco-checker. Run the tests with `make test` (the newest available iPhone simulator; `make help` lists the targets). CI runs the same target on a GitHub-hosted macOS runner for pull requests and pushes to main (this repo is public, so it never uses omar or any self-hosted runner).
 
 ## Contributing
 

@@ -1,8 +1,13 @@
 name: CI
 
-# Unit tests for our fork on omar (the self-hosted macOS runner). omar runs one
-# job at a time and also builds app releases, so this only runs when package
-# code changes, and a newer push cancels the older run.
+# Unit tests for our fork. This repo is public, so it runs on a GitHub-hosted
+# macOS runner (free for public repos), never omar or any self-hosted runner:
+# the org's runner group excludes public repos on purpose (HOMES-221, see
+# homeserver-infra/terraform/github/actions.tf). Use a literal hosted label,
+# not vars.CI_RUNNER.
+#
+# The paths filter is safe only because this is not a required check. If it
+# ever becomes one, drop the filter, or PRs that skip the job can never merge.
 on:
   pull_request:
     paths:
@@ -31,11 +36,8 @@ permissions:
 
 jobs:
   test:
-    runs-on: omar
-    timeout-minutes: 20
-    defaults:
-      run:
-        shell: zsh {0}
+    runs-on: macos-26
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
 
