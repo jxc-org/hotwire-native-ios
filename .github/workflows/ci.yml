@@ -1,0 +1,50 @@
+name: CI
+
+# Unit tests for our fork. This repo is public, so it runs on a GitHub-hosted
+# macOS runner (free for public repos), never omar or any self-hosted runner:
+# the org's runner group excludes public repos on purpose (HOMES-221, see
+# homeserver-infra/terraform/github/actions.tf). Use a literal hosted label,
+# not vars.CI_RUNNER.
+#
+# The paths filter is safe only because this is not a required check. If it
+# ever becomes one, drop the filter, or PRs that skip the job can never merge.
+on:
+  pull_request:
+    paths:
+      - 'Source/**'
+      - 'Tests/**'
+      - 'Package.swift'
+      - 'Package.resolved'
+      - 'Makefile'
+      - '.github/workflows/ci.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'Source/**'
+      - 'Tests/**'
+      - 'Package.swift'
+      - 'Package.resolved'
+      - 'Makefile'
+      - '.github/workflows/ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Xcode and simulator
+        run: |
+          xcodebuild -version
+          echo "Destination: $(make -s destination)"
+
+      - name: Test
+        run: make test
