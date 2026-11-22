@@ -26,6 +26,18 @@
     },
     {
       "patterns": [
+        "^/navigation$",
+        "^/components$",
+        "^/resources$",
+        "^/numbers$"
+      ],
+      "properties": {
+        "pane": "secondary"
+      },
+      "comment": "Open in the detail pane of HotwireSplitViewController. Ignored by Navigator and HotwireTabBarController."
+    },
+    {
+      "patterns": [
         "^/$"
       ],
       "properties": {
