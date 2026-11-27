@@ -13,7 +13,10 @@ final class PathConfigurationLoader {
         self.options = options
     }
     
-    func load(then completion: @escaping PathConfigurationLoaderCompletionHandler) {
+    /// - Parameter replayingCachedServerData: when `true` (the default), a
+    ///   cached copy of each server source is loaded immediately, before the
+    ///   network fetch. Pass `false` to only use fresh network data.
+    func load(replayingCachedServerData: Bool = true, then completion: @escaping PathConfigurationLoaderCompletionHandler) {
         completionHandler = completion
         
         for source in sources {
@@ -23,18 +26,18 @@ final class PathConfigurationLoader {
             case .file(let url):
                 loadFile(url)
             case .server(let url):
-                download(from: url)
+                download(from: url, replayingCache: replayingCachedServerData)
             }
         }
     }
     
     // MARK: - Server
     
-    private func download(from url: URL) {
+    private func download(from url: URL, replayingCache: Bool) {
         precondition(!url.isFileURL, "URL provided for server is a file url")
         
         // Immediately load most recent cached version if available
-        if let data = cachedData(for: url) {
+        if replayingCache, let data = cachedData(for: url) {
             loadData(data)
         }
         
