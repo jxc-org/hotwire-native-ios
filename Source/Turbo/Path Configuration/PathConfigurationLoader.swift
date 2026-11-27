@@ -1,12 +1,13 @@
 import Foundation
 
 typealias PathConfigurationLoaderCompletionHandler = (PathConfigurationDecoder) -> Void
+typealias PathConfigurationLoaderSourcedCompletionHandler = (PathConfigurationDecoder, PathConfiguration.LoadSource) -> Void
 
 final class PathConfigurationLoader {
     private let cacheDirectory = "Turbo"
     private let sources: [PathConfiguration.Source]
     private let options: PathConfigurationLoaderOptions?
-    private var completionHandler: PathConfigurationLoaderCompletionHandler?
+    private var completionHandler: PathConfigurationLoaderSourcedCompletionHandler?
     
     init(sources: [PathConfiguration.Source], options: PathConfigurationLoaderOptions? = nil) {
         self.sources = sources
@@ -17,12 +18,19 @@ final class PathConfigurationLoader {
     ///   cached copy of each server source is loaded immediately, before the
     ///   network fetch. Pass `false` to only use fresh network data.
     func load(replayingCachedServerData: Bool = true, then completion: @escaping PathConfigurationLoaderCompletionHandler) {
+        loadReportingSource(replayingCachedServerData: replayingCachedServerData) { config, _ in
+            completion(config)
+        }
+    }
+
+    /// Like `load(then:)`, but also reports where each configuration came from.
+    func loadReportingSource(replayingCachedServerData: Bool = true, then completion: @escaping PathConfigurationLoaderSourcedCompletionHandler) {
         completionHandler = completion
         
         for source in sources {
             switch source {
             case .data(let data):
-                loadData(data)
+                loadData(data, source: .data)
             case .file(let url):
                 loadFile(url)
             case .server(let url):
@@ -38,7 +46,7 @@ final class PathConfigurationLoader {
         
         // Immediately load most recent cached version if available
         if replayingCache, let data = cachedData(for: url) {
-            loadData(data)
+            loadData(data, source: .cachedServer)
         }
         
         let session = options?.urlSessionConfiguration.map { URLSession(configuration: $0) } ?? URLSession.shared
@@ -59,7 +67,7 @@ final class PathConfigurationLoader {
                 return
             }
             
-            self?.loadData(data, cache: true, for: url)
+            self?.loadData(data, source: .server, cache: true, for: url)
         }.resume()
     }
     
@@ -116,7 +124,7 @@ final class PathConfigurationLoader {
         
         do {
             let data = try Data(contentsOf: url)
-            loadData(data)
+            loadData(data, source: .file)
         } catch {
             debugPrint("[path-configuration] *** error loading configuration from file: \(url), error: \(error)")
         }
@@ -124,7 +132,7 @@ final class PathConfigurationLoader {
     
     // MARK: - Data
     
-    private func loadData(_ data: Data, cache: Bool = false, for url: URL? = nil) {
+    private func loadData(_ data: Data, source: PathConfiguration.LoadSource, cache: Bool = false, for url: URL? = nil) {
         do {
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 throw JSONDecodingError.invalidJSON
@@ -137,7 +145,7 @@ final class PathConfigurationLoader {
                 cacheRemoteData(data, for: url)
             }
             
-            updateHandler(with: config)
+            updateHandler(with: config, source: source)
         } catch {
             debugPrint("[path-configuration] *** error decoding path configuration: \(error)")
         }
@@ -145,12 +153,12 @@ final class PathConfigurationLoader {
     
     // MARK: - Delegate
     
-    private func updateHandler(with config: PathConfigurationDecoder) {
+    private func updateHandler(with config: PathConfigurationDecoder, source: PathConfiguration.LoadSource) {
         if Thread.isMainThread {
-            completionHandler?(config)
+            completionHandler?(config, source)
         } else {
             DispatchQueue.main.async { [weak self] in
-                self?.completionHandler?(config)
+                self?.completionHandler?(config, source)
             }
         }
     }

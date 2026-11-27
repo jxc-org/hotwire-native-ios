@@ -83,6 +83,38 @@ class PathConfigurationRefreshTests: XCTestCase {
         XCTAssertEqual(serverRequestCount, 0)
     }
 
+    func test_lastUpdateSource_reportsWhereEachUpdateCameFrom() {
+        // First launch: bundled file, then the download (which gets cached).
+        let first = PathConfiguration()
+        var sources: [PathConfiguration.LoadSource?] = []
+        let observer = NotificationCenter.default.addObserver(
+            forName: PathConfiguration.didUpdateNotification, object: nil, queue: nil
+        ) { notification in
+            sources.append((notification.object as? PathConfiguration)?.lastUpdateSource)
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        XCTAssertNil(first.lastUpdateSource)
+        first.sources = [.file(fileURL), .server(serverURL)]
+        waitForSource("server-1", on: first)
+        XCTAssertEqual(sources, [.file, .server])
+
+        // Next launch: bundled, then the cached copy, then the download.
+        sources = []
+        serverVersion = "server-2"
+        let second = PathConfiguration()
+        second.sources = [.file(fileURL), .server(serverURL)]
+        waitForSource("server-2", on: second)
+        XCTAssertEqual(sources, [.file, .cachedServer, .server])
+
+        // A refresh only downloads.
+        sources = []
+        serverVersion = "server-3"
+        second.refreshServerSources()
+        waitForSource("server-3", on: second)
+        XCTAssertEqual(sources, [.server])
+    }
+
     // MARK: - Foreground refresh
 
     func test_refreshOnForeground_isOffByDefaultAndRegistersNoObserver() {

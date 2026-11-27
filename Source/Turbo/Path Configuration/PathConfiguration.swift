@@ -33,6 +33,11 @@ public final class PathConfiguration {
     /// Returns top-level settings: `{ settings: {} }`
     public private(set) var settings: [String: AnyHashable] = [:]
 
+    /// Where the current `settings` and `rules` came from, or `nil` before
+    /// the first load. Read it from a `didUpdateNotification` observer to tell
+    /// a bundled file apart from server data.
+    public private(set) var lastUpdateSource: LoadSource?
+
     /// The list of rules from the configuration: `{ rules: [] }`
     /// Default server route rules are included by default.
     public private(set) var rules: [PathRule] = PathRule.defaultServerRoutes
@@ -107,8 +112,8 @@ public final class PathConfiguration {
 
         lastServerLoadAttempt = now()
         loader = PathConfigurationLoader(sources: serverSources, options: options)
-        loader?.load(replayingCachedServerData: false) { [weak self] config in
-            self?.update(with: config)
+        loader?.loadReportingSource(replayingCachedServerData: false) { [weak self] config, source in
+            self?.update(with: config, source: source)
         }
     }
 
@@ -137,12 +142,13 @@ public final class PathConfiguration {
             lastServerLoadAttempt = now()
         }
         loader = PathConfigurationLoader(sources: sources, options: options)
-        loader?.load { [weak self] config in
-            self?.update(with: config)
+        loader?.loadReportingSource { [weak self] config, source in
+            self?.update(with: config, source: source)
         }
     }
 
-    private func update(with config: PathConfigurationDecoder) {
+    private func update(with config: PathConfigurationDecoder, source: LoadSource) {
+        lastUpdateSource = source
         // Update our internal state with the config from the loader
         settings = config.settings
         rules = config.rules
@@ -169,5 +175,17 @@ public extension PathConfiguration {
             if case .server = self { return true }
             return false
         }
+    }
+
+    /// Where a configuration update came from.
+    enum LoadSource: Equatable {
+        /// A `.data` source.
+        case data
+        /// A `.file` source, typically bundled with the app.
+        case file
+        /// The cached copy of a `.server` source, replayed before downloading.
+        case cachedServer
+        /// A fresh download of a `.server` source.
+        case server
     }
 }
