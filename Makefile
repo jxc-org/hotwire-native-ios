@@ -13,6 +13,10 @@ DESTINATION ?= platform=iOS Simulator,id=$(SIM_ID)
 FORMATTER := $(shell command -v xcbeautify >/dev/null 2>&1 && echo "| xcbeautify")
 
 SHELL := /bin/bash
+# GNU Make 3.81 (the version macOS ships, and the one CI runs) ignores
+# .SHELLFLAGS, so the pipefail here is not enough on its own: each piped
+# recipe also sets it inline. Without that, `xcodebuild ... | xcbeautify`
+# exits with xcbeautify's status and a failing build or test looks green.
 .SHELLFLAGS := -o pipefail -ec
 
 .PHONY: help build test destination
@@ -26,7 +30,7 @@ destination:
 	@echo "$(DESTINATION)"
 
 build:
-	xcodebuild build -scheme $(SCHEME) -destination '$(DESTINATION)' CODE_SIGNING_ALLOWED=NO $(FORMATTER)
+	set -o pipefail; xcodebuild build -scheme $(SCHEME) -destination '$(DESTINATION)' CODE_SIGNING_ALLOWED=NO $(FORMATTER)
 
 test:
-	xcodebuild test -scheme $(SCHEME) -destination '$(DESTINATION)' CODE_SIGNING_ALLOWED=NO $(FORMATTER)
+	set -o pipefail; xcodebuild test -scheme $(SCHEME) -destination '$(DESTINATION)' CODE_SIGNING_ALLOWED=NO $(FORMATTER)
