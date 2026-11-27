@@ -7,11 +7,15 @@ final class PathConfigurationLoader {
     private let cacheDirectory = "Turbo"
     private let sources: [PathConfiguration.Source]
     private let options: PathConfigurationLoaderOptions?
+    private let session: URLSession?
     private var completionHandler: PathConfigurationLoaderSourcedCompletionHandler?
     
-    init(sources: [PathConfiguration.Source], options: PathConfigurationLoaderOptions? = nil) {
+    /// - Parameter session: reused for downloads when given; otherwise a new
+    ///   session is made from `options` (or `URLSession.shared`).
+    init(sources: [PathConfiguration.Source], options: PathConfigurationLoaderOptions? = nil, session: URLSession? = nil) {
         self.sources = sources
         self.options = options
+        self.session = session
     }
     
     /// - Parameter replayingCachedServerData: when `true` (the default), a
@@ -49,9 +53,16 @@ final class PathConfigurationLoader {
             loadData(data, source: .cachedServer)
         }
         
-        let session = options?.urlSessionConfiguration.map { URLSession(configuration: $0) } ?? URLSession.shared
+        let session = self.session
+            ?? options?.urlSessionConfiguration.map { URLSession(configuration: $0) }
+            ?? URLSession.shared
 
         var request = URLRequest(url: url)
+        if !replayingCache {
+            // A refresh must reach the server: never let an HTTP cache
+            // (e.g. a max-age response) answer it with a stale copy.
+            request.cachePolicy = .reloadRevalidatingCacheData
+        }
         // Send the same user agent the WebView uses so the server can
         // identify the app and its version on the path-configuration
         // request — which, being a plain URLSession request, would not

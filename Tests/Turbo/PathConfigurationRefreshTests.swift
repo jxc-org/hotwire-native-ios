@@ -115,6 +115,61 @@ class PathConfigurationRefreshTests: XCTestCase {
         XCTAssertEqual(sources, [.server])
     }
 
+    func test_overlappingRefreshes_newestWins() {
+        let configuration = PathConfiguration()
+        configuration.sources = [.server(serverURL)]
+        waitForSource("server-1", on: configuration)
+
+        // The first refresh's response is slow; the second's is immediate.
+        HTTPStubs.removeAllStubs()
+        var requestCount = 0
+        stub(condition: isAbsoluteURLString(serverURL.absoluteString)) { _ in
+            requestCount += 1
+            let isFirst = requestCount == 1
+            let json: [String: Any] = ["settings": ["source": isFirst ? "slow-old" : "fast-new"], "rules": []]
+            return HTTPStubsResponse(jsonObject: json, statusCode: 200, headers: [:])
+                .responseTime(isFirst ? 0.5 : 0)
+        }
+
+        var updates: [String] = []
+        let observer = NotificationCenter.default.addObserver(
+            forName: PathConfiguration.didUpdateNotification, object: configuration, queue: nil
+        ) { _ in updates.append(configuration.settings["source"] as? String ?? "?") }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        configuration.refreshServerSources()
+        configuration.refreshServerSources()
+        waitForSource("fast-new", on: configuration)
+
+        // Give the slow, superseded response time to arrive; it must be dropped.
+        let settled = expectation(description: "slow response window passed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { settled.fulfill() }
+        wait(for: [settled], timeout: 3)
+
+        XCTAssertEqual(requestCount, 2)
+        XCTAssertEqual(updates, ["fast-new"])
+        XCTAssertEqual(configuration.settings["source"] as? String, "fast-new")
+    }
+
+    func test_refresh_revalidatesInsteadOfUsingAnHTTPCachedCopy() {
+        let configuration = PathConfiguration()
+        configuration.sources = [.server(serverURL)]
+        waitForSource("server-1", on: configuration)
+
+        var policies: [URLRequest.CachePolicy] = []
+        HTTPStubs.removeAllStubs()
+        stub(condition: isAbsoluteURLString(serverURL.absoluteString)) { request in
+            policies.append(request.cachePolicy)
+            let json: [String: Any] = ["settings": ["source": "server-2"], "rules": []]
+            return HTTPStubsResponse(jsonObject: json, statusCode: 200, headers: [:])
+        }
+
+        configuration.refreshServerSources()
+        waitForSource("server-2", on: configuration)
+
+        XCTAssertEqual(policies, [.reloadRevalidatingCacheData])
+    }
+
     // MARK: - Foreground refresh
 
     func test_refreshOnForeground_isOffByDefaultAndRegistersNoObserver() {

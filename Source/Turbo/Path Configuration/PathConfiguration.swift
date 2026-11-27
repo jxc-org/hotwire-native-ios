@@ -111,7 +111,7 @@ public final class PathConfiguration {
         guard !serverSources.isEmpty else { return }
 
         lastServerLoadAttempt = now()
-        loader = PathConfigurationLoader(sources: serverSources, options: options)
+        loader = PathConfigurationLoader(sources: serverSources, options: options, session: session)
         loader?.loadReportingSource(replayingCachedServerData: false) { [weak self] config, source in
             self?.update(with: config, source: source)
         }
@@ -129,6 +129,11 @@ public final class PathConfiguration {
 
     private var loader: PathConfigurationLoader?
 
+    /// One session for every load and refresh when a custom
+    /// `urlSessionConfiguration` is set, instead of one per download.
+    /// `nil` means the loader's default (`URLSession.shared`).
+    private lazy var session: URLSession? = options?.urlSessionConfiguration.map { URLSession(configuration: $0) }
+
     /// When the last server fetch was started. Used to gate foreground refreshes.
     private(set) var lastServerLoadAttempt: Date?
 
@@ -141,7 +146,7 @@ public final class PathConfiguration {
         if sources.contains(where: \.isServer) {
             lastServerLoadAttempt = now()
         }
-        loader = PathConfigurationLoader(sources: sources, options: options)
+        loader = PathConfigurationLoader(sources: sources, options: options, session: session)
         loader?.loadReportingSource { [weak self] config, source in
             self?.update(with: config, source: source)
         }
