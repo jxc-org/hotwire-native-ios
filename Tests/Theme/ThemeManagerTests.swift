@@ -219,6 +219,110 @@ class ThemeManagerTests: XCTestCase {
         assertColor(accent?.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)), "#F08A6C")
     }
 
+    func test_onlyAppWindowsAreTouched_notUIKitOverlayWindows() {
+        // Stands in for UIKit's keyboard / text-effects windows.
+        let overlay = UIWindow()
+        overlay.windowLevel = .alert + 1
+        overlay.rootViewController = UINavigationController(rootViewController: UIViewController())
+        overlay.isHidden = false
+        defer { overlay.isHidden = true }
+        let overlayBar = (overlay.rootViewController as! UINavigationController).navigationBar
+        let overlayBackground = overlay.backgroundColor
+        let overlayBarBackground = overlayBar.standardAppearance.backgroundColor
+        manager.windows = { [unowned self] in [window, overlay] }
+
+        loadServerConfiguration()
+        enableTheme()
+
+        assertColor(window.backgroundColor, "#FFF8F2")
+        XCTAssertEqual(overlay.backgroundColor, overlayBackground, "overlay window background untouched")
+        XCTAssertEqual(overlayBar.standardAppearance.backgroundColor, overlayBarBackground, "overlay hierarchy untouched")
+    }
+
+    /// Review fix: a reused modal (Navigator keeps one modal navigation
+    /// controller) must not keep a theme applied directly while it was on screen.
+    /// Review fix: a reused modal (Navigator keeps one modal navigation
+    /// controller) must not keep a theme applied directly while it was on
+    /// screen. This test host has no window scene, so UIKit never completes a
+    /// real present/dismiss transition; the same lifecycle is modelled by
+    /// putting the reused controller in a window, taking it out of every
+    /// window, and showing it again.
+    func test_reusedModal_showsTheLatestThemeWhenShownAgain() {
+        let configuration = loadServerConfiguration()
+        enableTheme()
+        let modal = UINavigationController(rootViewController: UIViewController())
+        let modalWindow = UIWindow()
+        defer { modalWindow.isHidden = true }
+        manager.windows = { [unowned self] in [window, modalWindow] }
+
+        // On screen while theme B arrives: styled directly.
+        modalWindow.rootViewController = modal
+        modalWindow.isHidden = false
+        serverTheme = Self.themeB
+        configuration.refreshServerSources()
+        waitForUpdate(of: configuration)
+        assertColor(modal.navigationBar.standardAppearance.backgroundColor, "#0B3D2E")
+
+        // "Dismissed": in no window while theme C arrives.
+        modalWindow.rootViewController = nil
+        XCTAssertNil(modal.view.window)
+        let themeC = Self.theme(surface: "#1E3A8A", border: "#1D4ED8", text: "#EFF6FF", accent: "#93C5FD", background: "#172554")
+        serverTheme = themeC
+        configuration.refreshServerSources()
+        waitForUpdate(of: configuration)
+
+        // "Presented" again: shows C, not the stale B.
+        modalWindow.rootViewController = modal
+        assertColor(modal.navigationBar.standardAppearance.backgroundColor, "#1E3A8A")
+        assertColor(modal.navigationBar.scrollEdgeAppearance?.backgroundColor, "#1E3A8A")
+        assertColor(modal.navigationBar.tintColor, "#93C5FD")
+    }
+
+    func test_offScreenWebViews_areRestyledOnUpdate() {
+        let configuration = loadServerConfiguration()
+        enableTheme()
+        // Made by the library but not in any window yet (e.g. a modal session's).
+        let webView = Hotwire.config.makeWebView()
+        assertColor(webView.backgroundColor, "#FFF8F2")
+
+        serverTheme = Self.themeB
+        configuration.refreshServerSources()
+        waitForUpdate(of: configuration)
+
+        assertColor(webView.backgroundColor, "#052E16")
+        assertColor(webView.scrollView.backgroundColor, "#052E16")
+    }
+
+    func test_serverThemeEqualToTheBundledOne_isStillPersisted() throws {
+        enableTheme()
+        serverTheme = Self.bundledTheme
+        let configuration = PathConfiguration()
+        Hotwire.config.pathConfiguration = configuration
+        configuration.sources = [.file(try bundledFile()), .server(serverURL)]
+        waitForUpdate(of: configuration)
+
+        assertBar(showsTheme: Self.bundledTheme)
+        XCTAssertEqual(storedTheme()?.light.accent, "#444444")
+    }
+
+    func test_rejection_isLoggedToACustomLog_withTheReasonButNotThePayload() {
+        let spy = ThemeLogSpy()
+        Hotwire.config.log = spy
+        let configuration = loadServerConfiguration()
+        enableTheme()
+
+        var unknownVersion = Self.themeB
+        unknownVersion["version"] = 2
+        serverTheme = unknownVersion
+        configuration.refreshServerSources()
+        waitForUpdate(of: configuration)
+
+        let warnings = spy.messages(for: .warning)
+        XCTAssertEqual(warnings.count, 1)
+        XCTAssertTrue(warnings.first?.contains("unsupported theme version 2") == true, "\(warnings)")
+        XCTAssertFalse(warnings.joined().contains("#0B3D2E"), "no payload in the log")
+    }
+
     // MARK: - Rejection
 
     /// Acceptance: an invalid or unknown-version theme leaves the current one in place.
@@ -395,5 +499,17 @@ class ThemeManagerTests: XCTestCase {
         resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
         let actual = String(format: "#%02X%02X%02X", Int(round(red * 255)), Int(round(green * 255)), Int(round(blue * 255)))
         XCTAssertEqual(actual, hex.uppercased(), file: file, line: line)
+    }
+}
+
+private final class ThemeLogSpy: Logger {
+    private(set) var entries: [(level: LogLevel, message: String)] = []
+
+    func log(message: String, level: LogLevel, file: String, function: String, line: UInt) {
+        entries.append((level, message))
+    }
+
+    func messages(for level: LogLevel) -> [String] {
+        entries.filter { $0.level == level }.map(\.message)
     }
 }

@@ -5,9 +5,25 @@ import WebKit
 /// that enter a window later, so live bars, windows and web views are also
 /// walked and restyled directly.
 ///
-/// View-controller backgrounds are deliberately left alone, so apps' per-rule
-/// `background_color` overrides survive a live update.
+/// Only the app's own windows (`.normal` level) are touched, never UIKit's
+/// keyboard or text-effects windows. View-controller backgrounds are
+/// deliberately left alone, so apps' per-rule `background_color` overrides
+/// survive a live update.
+///
+/// Main thread only.
 enum ThemeApplier {
+    /// Bars and web views that were styled, so callers can restyle them on
+    /// the next update even if they are no longer on screen.
+    struct Styled {
+        var navigationBars: [UINavigationBar] = []
+        var webViews: [WKWebView] = []
+    }
+
+    /// The app's own windows, not UIKit's keyboard or text-effects windows.
+    static func isAppWindow(_ window: UIWindow) -> Bool {
+        window.windowLevel == .normal
+    }
+
     static func colors(for theme: HotwireTheme) -> [HotwireTheme.Role: UIColor] {
         var colors: [HotwireTheme.Role: UIColor] = [:]
         for role in HotwireTheme.Role.allCases {
@@ -42,7 +58,18 @@ enum ThemeApplier {
         return appearance
     }
 
-    static func apply(colors: [HotwireTheme.Role: UIColor], config: ThemeConfig, windows: [UIWindow]) {
+    /// Styles the appearance proxy (future bars), the app windows' live
+    /// hierarchy, and every previously styled bar and web view passed in, even
+    /// ones currently off screen: a direct value beats the proxy, so a reused
+    /// modal would otherwise keep an old theme when presented again.
+    @discardableResult
+    static func apply(
+        colors: [HotwireTheme.Role: UIColor],
+        config: ThemeConfig,
+        windows: [UIWindow],
+        previouslyStyled: Styled = Styled()
+    ) -> Styled {
+        assert(Thread.isMainThread, "ThemeApplier must run on the main thread")
         let appearance = navigationBarAppearance(colors: colors, config: config)
         let accent = colors[.accent]
         let background = colors[.background]
@@ -50,24 +77,42 @@ enum ThemeApplier {
         // Future bars.
         style(navigationBar: UINavigationBar.appearance(), appearance: appearance, tint: accent)
 
-        // Live bars, windows and web views.
-        for window in windows {
+        var bars = previouslyStyled.navigationBars
+        var webViews = previouslyStyled.webViews
+
+        // Live app windows and their hierarchies.
+        for window in windows where isAppWindow(window) {
             window.tintColor = accent
             window.backgroundColor = background
             if let root = window.rootViewController {
                 visit(root) { viewController in
                     if let navigationController = viewController as? UINavigationController {
-                        style(navigationBar: navigationController.navigationBar, appearance: appearance, tint: accent)
+                        bars.append(navigationController.navigationBar)
                     }
-                    if let background,
-                       let visitable = viewController as? VisitableViewController,
+                    if let visitable = viewController as? VisitableViewController,
                        visitable.isViewLoaded,
                        let webView = visitable.visitableView.webView {
-                        style(webView: webView, background: background)
+                        webViews.append(webView)
                     }
                 }
             }
         }
+
+        let styled = Styled(navigationBars: unique(bars), webViews: unique(webViews))
+        for bar in styled.navigationBars {
+            style(navigationBar: bar, appearance: appearance, tint: accent)
+        }
+        if let background {
+            for webView in styled.webViews {
+                style(webView: webView, background: background)
+            }
+        }
+        return styled
+    }
+
+    private static func unique<T: AnyObject>(_ objects: [T]) -> [T] {
+        var seen = Set<ObjectIdentifier>()
+        return objects.filter { seen.insert(ObjectIdentifier($0)).inserted }
     }
 
     static func style(navigationBar: UINavigationBar, appearance: UINavigationBarAppearance, tint: UIColor?) {

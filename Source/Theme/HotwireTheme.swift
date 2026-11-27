@@ -87,7 +87,8 @@ extension HotwireTheme {
         }
 
         guard let version = Self.integer(object["version"]), version == Self.supportedVersion else {
-            throw HotwireThemeError.unsupportedVersion(object["version"].map { "\($0)" } ?? "missing")
+            // Only a short prefix of the value: log the check, never the payload.
+            throw HotwireThemeError.unsupportedVersion(object["version"].map { String("\($0)".prefix(16)) } ?? "missing")
         }
 
         let light = try Self.palette(object["light"], name: "light")

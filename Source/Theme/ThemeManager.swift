@@ -1,3 +1,4 @@
+import OSLog
 import UIKit
 import WebKit
 
@@ -6,6 +7,9 @@ import WebKit
 ///
 /// Driven by `Hotwire.config` changes. Does nothing (no observer, no
 /// appearance changes) unless `Hotwire.config.theme.isEnabled` is set.
+///
+/// Main thread only: every entry point that touches UIKit hops to (or
+/// asserts) the main thread.
 final class ThemeManager {
     static let shared = ThemeManager()
 
@@ -27,14 +31,34 @@ final class ThemeManager {
     private weak var pathConfiguration: PathConfiguration?
     private var observer: NSObjectProtocol?
 
+    /// Every bar and web view styled so far, restyled on each update even when
+    /// off screen (a reused modal, a web view waiting in a session).
+    private let styledNavigationBars = NSHashTable<UINavigationBar>.weakObjects()
+    private let styledWebViews = NSHashTable<WKWebView>.weakObjects()
+
     var isObserving: Bool { observer != nil }
 
-    /// Invalid themes are logged even when Hotwire debug logging is off.
-    private let warningLogger: Logger = HotwireLogger.enabledLogger
+    /// The app's `Hotwire.config.log`, if set; otherwise warnings go to `osLog`.
+    private var customLog: Logger?
+
+    /// Theme warnings are logged even when Hotwire debug logging is off, with
+    /// the reason marked public so it is readable in production. Reasons name
+    /// the failed check, never the payload.
+    private static let osLog = os.Logger(
+        subsystem: Bundle.module.bundleIdentifier ?? "HotwireNative",
+        category: "Theme"
+    )
 
     // MARK: - Configuration
 
+    /// Called from `Hotwire.config`'s `didSet`. Hops to the main thread if needed.
     func configDidChange(_ hotwireConfig: HotwireConfig) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.configDidChange(hotwireConfig) }
+            return
+        }
+
+        customLog = hotwireConfig.log
         let newConfig = hotwireConfig.theme
         let oldConfig = config
         config = newConfig
@@ -48,7 +72,7 @@ final class ThemeManager {
 
         var themeChanged = false
         if currentTheme == nil, let restored = restoreLastGoodTheme() {
-            setTheme(restored, persist: false)
+            setTheme(restored)
             themeChanged = true
         }
 
@@ -117,7 +141,7 @@ final class ThemeManager {
         do {
             theme = try HotwireTheme(settingsValue: raw)
         } catch {
-            warningLogger.warning("[theme] rejected settings.theme: \(error); keeping current theme")
+            warn("rejected settings.theme: \(error); keeping current theme")
             return false
         }
 
@@ -127,30 +151,55 @@ final class ThemeManager {
             return false
         }
 
+        // Persist before the equality check, so a server theme identical to
+        // the bundled one in use still becomes the last good theme.
+        if fromServer {
+            persistLastGoodTheme(theme)
+        }
+
         guard theme != currentTheme else { return false }
-        setTheme(theme, persist: fromServer)
+        setTheme(theme)
         return true
     }
 
-    private func setTheme(_ theme: HotwireTheme, persist: Bool) {
+    private func setTheme(_ theme: HotwireTheme) {
         currentTheme = theme
         colors = ThemeApplier.colors(for: theme)
-        if persist {
-            persistLastGoodTheme(theme)
-        }
     }
 
     // MARK: - Applying
 
+    /// Main thread only.
     private func apply() {
         guard config.isEnabled, !colors.isEmpty else { return }
-        ThemeApplier.apply(colors: colors, config: config, windows: windows())
+        let styled = ThemeApplier.apply(
+            colors: colors,
+            config: config,
+            windows: windows(),
+            previouslyStyled: .init(
+                navigationBars: styledNavigationBars.allObjects,
+                webViews: styledWebViews.allObjects
+            )
+        )
+        styled.navigationBars.forEach(styledNavigationBars.add)
+        styled.webViews.forEach(styledWebViews.add)
     }
 
-    /// Gives a newly created web view the theme's background.
+    /// Gives a newly created web view the theme's background, and keeps it so
+    /// later updates restyle it too. Main thread only.
     func style(newWebView webView: WKWebView) {
-        guard config.isEnabled, let background = colors[.background] else { return }
+        guard config.isEnabled else { return }
+        styledWebViews.add(webView)
+        guard let background = colors[.background] else { return }
         ThemeApplier.style(webView: webView, background: background)
+    }
+
+    private func warn(_ reason: String) {
+        if let customLog {
+            customLog.warning("[theme] \(reason)")
+        } else {
+            Self.osLog.warning("[theme] \(reason, privacy: .public)")
+        }
     }
 
     /// Colors exposed to apps through `Hotwire.theme`; empty when disabled.
@@ -170,7 +219,7 @@ final class ThemeManager {
         do {
             return try JSONDecoder().decode(HotwireTheme.self, from: data).validated()
         } catch {
-            warningLogger.warning("[theme] discarding stored theme: \(error)")
+            warn("discarding stored theme: \(error)")
             userDefaults.removeObject(forKey: Self.storageKey)
             return nil
         }
@@ -186,5 +235,8 @@ final class ThemeManager {
         currentTheme = nil
         colors = [:]
         pathConfiguration = nil
+        customLog = nil
+        styledNavigationBars.removeAllObjects()
+        styledWebViews.removeAllObjects()
     }
 }
