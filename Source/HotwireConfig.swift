@@ -112,6 +112,12 @@ public struct HotwireConfig {
         DefaultErrorView(error: error, handler: handler)
     }
 
+    // MARK: Theme
+
+    /// Opt-in theming from the path configuration's `settings.theme`.
+    /// Off by default. See `ThemeConfig`.
+    public var theme = ThemeConfig()
+
     // MARK: Bridge
 
     /// Set a custom JSON encoder when parsing bridge payloads.
@@ -128,6 +134,8 @@ public struct HotwireConfig {
 
     public func makeWebView() -> WKWebView {
         let webView = makeCustomWebView(makeWebViewConfiguration())
+        // Fork: themed background for new web views; no-op unless theming is enabled.
+        ThemeManager.shared.style(newWebView: webView)
         
         if !Hotwire.bridgeComponentTypes.isEmpty {
             Bridge.initialize(webView)

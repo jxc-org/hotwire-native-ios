@@ -2,7 +2,12 @@ import WebKit
 
 public enum Hotwire {
     /// Use this instance to configure Hotwire.
-    public static var config = HotwireConfig()
+    public static var config = HotwireConfig() {
+        didSet {
+            // Fork: theming is opt-in; this is a no-op unless config.theme.isEnabled.
+            ThemeManager.shared.configDidChange(config)
+        }
+    }
 
     /// Registers your bridge components to use with `HotwireWebViewController`.
     ///
