@@ -7,8 +7,19 @@ final class JSFetchRecoveryHandlerTests: XCTestCase {
     private let handler = JSFetchRecoveryHandler()
     private let testURL = URL(string: "https://example.com/page")!
 
+    override func setUp() {
+        super.setUp()
+        // Hotwire.config's one-time initializer creates a WKProcessPool, and
+        // WebKit traps (EXC_BREAKPOINT in InitializeWebKit2) if that first
+        // happens off the main thread. resolve(location:) reads
+        // Hotwire.config from a background task, so when this suite ran first
+        // or alone it crashed the test host. setUp runs on the main thread.
+        _ = Hotwire.config
+    }
+
     override func tearDown() {
         HTTPStubs.removeAllStubs()
+        RedirectingURLProtocol.reset()
     }
 
     // MARK: - No redirect
@@ -27,15 +38,9 @@ final class JSFetchRecoveryHandlerTests: XCTestCase {
     func test_resolve_sameOriginRedirect_whenResponseURLDiffersButSameHost() async throws {
         let redirectURL = URL(string: "https://example.com/other")!
 
-        stub(condition: isAbsoluteURLString(testURL.absoluteString)) { _ in
-            // Simulate a redirect by returning a response whose URL differs from the request URL.
-            // OHHTTPStubs doesn't follow real redirects, so we use a redirect response
-            // that URLSession will follow, landing at a different URL on the same host.
-            let response = HTTPStubsResponse(data: Data(), statusCode: 301, headers: ["Location": redirectURL.absoluteString])
-            response.requestTime = 0
-            response.responseTime = 0
-            return response
-        }
+        // A 301 that URLSession follows, landing at a different URL on the same host.
+        // See RedirectingURLProtocol for why the redirect hop isn't an OHHTTPStubs stub.
+        RedirectingURLProtocol.redirect(testURL, to: redirectURL)
 
         stub(condition: isAbsoluteURLString(redirectURL.absoluteString)) { _ in
             HTTPStubsResponse(data: Data(), statusCode: 200, headers: nil)
@@ -50,9 +55,7 @@ final class JSFetchRecoveryHandlerTests: XCTestCase {
     func test_resolve_crossOriginRedirect_whenResponseURLHasDifferentHost() async throws {
         let redirectURL = URL(string: "https://other.com/page")!
 
-        stub(condition: isAbsoluteURLString(testURL.absoluteString)) { _ in
-            HTTPStubsResponse(data: Data(), statusCode: 301, headers: ["Location": redirectURL.absoluteString])
-        }
+        RedirectingURLProtocol.redirect(testURL, to: redirectURL)
 
         stub(condition: isAbsoluteURLString(redirectURL.absoluteString)) { _ in
             HTTPStubsResponse(data: Data(), statusCode: 200, headers: nil)
@@ -108,9 +111,7 @@ final class JSFetchRecoveryHandlerTests: XCTestCase {
     func test_resolve_detectsRedirect_evenWhenFinalResponseIsNon2xx() async throws {
         let redirectURL = URL(string: "https://other.com/login")!
 
-        stub(condition: isAbsoluteURLString(testURL.absoluteString)) { _ in
-            HTTPStubsResponse(data: Data(), statusCode: 301, headers: ["Location": redirectURL.absoluteString])
-        }
+        RedirectingURLProtocol.redirect(testURL, to: redirectURL)
 
         stub(condition: isAbsoluteURLString(redirectURL.absoluteString)) { _ in
             HTTPStubsResponse(data: Data(), statusCode: 401, headers: nil)
