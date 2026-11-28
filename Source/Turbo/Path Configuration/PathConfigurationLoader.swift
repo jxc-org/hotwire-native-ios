@@ -1,46 +1,68 @@
 import Foundation
 
 typealias PathConfigurationLoaderCompletionHandler = (PathConfigurationDecoder) -> Void
+typealias PathConfigurationLoaderSourcedCompletionHandler = (PathConfigurationDecoder, PathConfiguration.LoadSource) -> Void
 
 final class PathConfigurationLoader {
     private let cacheDirectory = "Turbo"
     private let sources: [PathConfiguration.Source]
     private let options: PathConfigurationLoaderOptions?
-    private var completionHandler: PathConfigurationLoaderCompletionHandler?
+    private let session: URLSession?
+    private var completionHandler: PathConfigurationLoaderSourcedCompletionHandler?
     
-    init(sources: [PathConfiguration.Source], options: PathConfigurationLoaderOptions? = nil) {
+    /// - Parameter session: reused for downloads when given; otherwise a new
+    ///   session is made from `options` (or `URLSession.shared`).
+    init(sources: [PathConfiguration.Source], options: PathConfigurationLoaderOptions? = nil, session: URLSession? = nil) {
         self.sources = sources
         self.options = options
+        self.session = session
     }
     
-    func load(then completion: @escaping PathConfigurationLoaderCompletionHandler) {
+    /// - Parameter replayingCachedServerData: when `true` (the default), a
+    ///   cached copy of each server source is loaded immediately, before the
+    ///   network fetch. Pass `false` to only use fresh network data.
+    func load(replayingCachedServerData: Bool = true, then completion: @escaping PathConfigurationLoaderCompletionHandler) {
+        loadReportingSource(replayingCachedServerData: replayingCachedServerData) { config, _ in
+            completion(config)
+        }
+    }
+
+    /// Like `load(then:)`, but also reports where each configuration came from.
+    func loadReportingSource(replayingCachedServerData: Bool = true, then completion: @escaping PathConfigurationLoaderSourcedCompletionHandler) {
         completionHandler = completion
         
         for source in sources {
             switch source {
             case .data(let data):
-                loadData(data)
+                loadData(data, source: .data)
             case .file(let url):
                 loadFile(url)
             case .server(let url):
-                download(from: url)
+                download(from: url, replayingCache: replayingCachedServerData)
             }
         }
     }
     
     // MARK: - Server
     
-    private func download(from url: URL) {
+    private func download(from url: URL, replayingCache: Bool) {
         precondition(!url.isFileURL, "URL provided for server is a file url")
         
         // Immediately load most recent cached version if available
-        if let data = cachedData(for: url) {
-            loadData(data)
+        if replayingCache, let data = cachedData(for: url) {
+            loadData(data, source: .cachedServer)
         }
         
-        let session = options?.urlSessionConfiguration.map { URLSession(configuration: $0) } ?? URLSession.shared
+        let session = self.session
+            ?? options?.urlSessionConfiguration.map { URLSession(configuration: $0) }
+            ?? URLSession.shared
 
         var request = URLRequest(url: url)
+        if !replayingCache {
+            // A refresh must reach the server: never let an HTTP cache
+            // (e.g. a max-age response) answer it with a stale copy.
+            request.cachePolicy = .reloadRevalidatingCacheData
+        }
         // Send the same user agent the WebView uses so the server can
         // identify the app and its version on the path-configuration
         // request — which, being a plain URLSession request, would not
@@ -56,7 +78,7 @@ final class PathConfigurationLoader {
                 return
             }
             
-            self?.loadData(data, cache: true, for: url)
+            self?.loadData(data, source: .server, cache: true, for: url)
         }.resume()
     }
     
@@ -113,7 +135,7 @@ final class PathConfigurationLoader {
         
         do {
             let data = try Data(contentsOf: url)
-            loadData(data)
+            loadData(data, source: .file)
         } catch {
             debugPrint("[path-configuration] *** error loading configuration from file: \(url), error: \(error)")
         }
@@ -121,7 +143,7 @@ final class PathConfigurationLoader {
     
     // MARK: - Data
     
-    private func loadData(_ data: Data, cache: Bool = false, for url: URL? = nil) {
+    private func loadData(_ data: Data, source: PathConfiguration.LoadSource, cache: Bool = false, for url: URL? = nil) {
         do {
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 throw JSONDecodingError.invalidJSON
@@ -134,7 +156,7 @@ final class PathConfigurationLoader {
                 cacheRemoteData(data, for: url)
             }
             
-            updateHandler(with: config)
+            updateHandler(with: config, source: source)
         } catch {
             debugPrint("[path-configuration] *** error decoding path configuration: \(error)")
         }
@@ -142,12 +164,12 @@ final class PathConfigurationLoader {
     
     // MARK: - Delegate
     
-    private func updateHandler(with config: PathConfigurationDecoder) {
+    private func updateHandler(with config: PathConfigurationDecoder, source: PathConfiguration.LoadSource) {
         if Thread.isMainThread {
-            completionHandler?(config)
+            completionHandler?(config, source)
         } else {
             DispatchQueue.main.async { [weak self] in
-                self?.completionHandler?(config)
+                self?.completionHandler?(config, source)
             }
         }
     }

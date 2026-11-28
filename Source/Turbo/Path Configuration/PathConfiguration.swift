@@ -18,6 +18,12 @@ public struct PathConfigurationLoaderOptions {
 }
 
 public final class PathConfiguration {
+    /// Posted on the main thread every time the configuration is updated with
+    /// new data (from any source). The notification's `object` is the
+    /// `PathConfiguration` that changed. Unlike `delegate`, any number of
+    /// observers can listen.
+    public static let didUpdateNotification = Notification.Name("HotwireNative.PathConfiguration.didUpdate")
+
     public weak var delegate: PathConfigurationDelegate?
 
     /// Enable to include the query string (in addition to the path) when applying rules.
@@ -26,6 +32,11 @@ public final class PathConfiguration {
 
     /// Returns top-level settings: `{ settings: {} }`
     public private(set) var settings: [String: AnyHashable] = [:]
+
+    /// Where the current `settings` and `rules` came from, or `nil` before
+    /// the first load. Read it from a `didUpdateNotification` observer to tell
+    /// a bundled file apart from server data.
+    public private(set) var lastUpdateSource: LoadSource?
 
     /// The list of rules from the configuration: `{ rules: [] }`
     /// Default server route rules are included by default.
@@ -38,6 +49,20 @@ public final class PathConfiguration {
             load()
         }
     }
+
+    /// Opt in to re-downloading the `.server` sources when the app returns to
+    /// the foreground, at most once per `foregroundRefreshMinimumInterval`.
+    /// Off by default: no foreground observer is registered unless enabled.
+    public var refreshOnForeground = false {
+        didSet {
+            updateForegroundObserver()
+        }
+    }
+
+    /// The minimum time between server fetches triggered by returning to the
+    /// foreground, measured from the last server fetch attempt (including the
+    /// initial load).
+    public var foregroundRefreshMinimumInterval: TimeInterval = 15 * 60
 
     /// Multiple sources will be loaded in order
     /// Remote sources should be last since they're loaded async
@@ -77,26 +102,65 @@ public final class PathConfiguration {
         return properties
     }
 
+    /// Re-downloads only the `.server` sources. Bundled (`.file`/`.data`)
+    /// sources and the cached server copy are not replayed, so a refresh can
+    /// never flash older values back. Any fetch still in flight is dropped,
+    /// so the newest fetch wins. Does nothing without `.server` sources.
+    public func refreshServerSources() {
+        let serverSources = sources.filter(\.isServer)
+        guard !serverSources.isEmpty else { return }
+
+        lastServerLoadAttempt = now()
+        loader = PathConfigurationLoader(sources: serverSources, options: options, session: session)
+        loader?.loadReportingSource(replayingCachedServerData: false) { [weak self] config, source in
+            self?.update(with: config, source: source)
+        }
+    }
+
+    deinit {
+        if let foregroundObserver {
+            NotificationCenter.default.removeObserver(foregroundObserver)
+        }
+    }
+
     // MARK: - Loading
 
     private let options: PathConfigurationLoaderOptions?
 
     private var loader: PathConfigurationLoader?
 
+    /// One session for every load and refresh when a custom
+    /// `urlSessionConfiguration` is set, instead of one per download.
+    /// `nil` means the loader's default (`URLSession.shared`).
+    private lazy var session: URLSession? = options?.urlSessionConfiguration.map { URLSession(configuration: $0) }
+
+    /// When the last server fetch was started. Used to gate foreground refreshes.
+    private(set) var lastServerLoadAttempt: Date?
+
+    /// Clock, injectable for tests.
+    var now: () -> Date = Date.init
+
+    var foregroundObserver: NSObjectProtocol?
+
     private func load() {
-        loader = PathConfigurationLoader(sources: sources, options: options)
-        loader?.load { [weak self] config in
-            self?.update(with: config)
+        if sources.contains(where: \.isServer) {
+            lastServerLoadAttempt = now()
+        }
+        loader = PathConfigurationLoader(sources: sources, options: options, session: session)
+        loader?.loadReportingSource { [weak self] config, source in
+            self?.update(with: config, source: source)
         }
     }
 
-    private func update(with config: PathConfigurationDecoder) {
+    private func update(with config: PathConfigurationDecoder, source: LoadSource) {
+        lastUpdateSource = source
         // Update our internal state with the config from the loader
         settings = config.settings
         rules = config.rules
         // Always include the default server route rules.
         rules.append(contentsOf: PathRule.defaultServerRoutes)
         delegate?.pathConfigurationDidUpdate()
+        NotificationCenter.default.post(name: Self.didUpdateNotification, object: self)
     }
 }
 
@@ -111,5 +175,22 @@ public extension PathConfiguration {
         case data(Data)
         case file(URL)
         case server(URL)
+
+        var isServer: Bool {
+            if case .server = self { return true }
+            return false
+        }
+    }
+
+    /// Where a configuration update came from.
+    enum LoadSource: Equatable {
+        /// A `.data` source.
+        case data
+        /// A `.file` source, typically bundled with the app.
+        case file
+        /// The cached copy of a `.server` source, replayed before downloading.
+        case cachedServer
+        /// A fresh download of a `.server` source.
+        case server
     }
 }
